@@ -1,0 +1,64 @@
+services:
+  clinic_db:
+    container_name: clinic_db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${CLINIC_DATABASE_NAME:?Set CLINIC_DATABASE_NAME in conn/.env}
+      POSTGRES_USER: ${CLINIC_DATABASE_USER:?Set CLINIC_DATABASE_USER in conn/.env}
+      POSTGRES_PASSWORD: ${CLINIC_DATABASE_PASSWORD:?Set CLINIC_DATABASE_PASSWORD in conn/.env}
+    volumes:
+      - clinic_db_data:/var/lib/postgresql/data
+      - ./scripts/postgres_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./scripts/postgres_seed.sql:/docker-entrypoint-initdb.d/002_seed.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  clinic_backend:
+    container_name: clinic_backend
+    build:
+      context: app/backend
+      dockerfile: ../../docker/backend.Dockerfile
+    volumes:
+      - ./app/backend:/app
+      - ./scripts:/scripts:ro
+    env_file:
+      - ./conn/backend.env
+      - ./conn/.env
+    environment:
+      CLINIC_DATABASE_HOST: clinic_db
+      CLINIC_SYNC_QUERY_DIR: /scripts
+      CLINIC_DATABASE_NAME: ${CLINIC_DATABASE_NAME:?Set CLINIC_DATABASE_NAME in conn/.env}
+      CLINIC_DATABASE_USER: ${CLINIC_DATABASE_USER:?Set CLINIC_DATABASE_USER in conn/.env}
+      CLINIC_DATABASE_PASSWORD: ${CLINIC_DATABASE_PASSWORD:?Set CLINIC_DATABASE_PASSWORD in conn/.env}
+      CLINIC_PRINTER_CONNECTION: simulated
+    ports:
+      - "8080:80"
+    depends_on:
+      clinic_db:
+        condition: service_healthy
+
+  clinic_frontend:
+    container_name: clinic_frontend
+    build:
+      context: app/frontend
+      dockerfile: ../../docker/frontend.Dockerfile
+      target: dev
+    volumes:
+      - ./app/frontend:/app
+      - /app/node_modules
+      - /app/.vite
+      - /app/.nitro
+    env_file:
+      - ./conn/frontend.env
+    ports:
+      - "8083:80"
+    depends_on:
+      - clinic_backend
+
+volumes:
+  clinic_db_data:
