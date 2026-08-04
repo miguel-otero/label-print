@@ -7,6 +7,8 @@
 
 # sh ./scripts/gcp_login.sh
 
+set -e
+
 zip -r deploy.zip \
   app scripts docker README.md .gitignore docker-compose.yaml conn/ \
   -x "*/node_modules/*" \
