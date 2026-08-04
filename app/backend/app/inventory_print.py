@@ -284,6 +284,7 @@ class InventoryPrintService:
                   %(search)s = ''
                   or documento ilike %(pattern)s
                   or referencia ilike %(pattern)s
+                  or proveedor_razon_social ilike %(pattern)s
               )
             group by documento, bodega
             order by max(fecha) desc, documento desc

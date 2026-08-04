@@ -418,7 +418,7 @@ export function InventoryEntryPrintPage() {
                     <Input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Documento o referencia"
+                      placeholder="Documento, referencia o proveedor"
                       className="pl-9"
                     />
                   </div>
