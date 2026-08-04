@@ -26,8 +26,7 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $backendDir = Join-Path $repoRoot "app\backend"
 $venvDir = Join-Path $backendDir ".venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
-$envFile = Join-Path $repoRoot "conn\backend.env"
-$secretsFile = Join-Path $repoRoot "conn\.env"
+$envFile = Join-Path $repoRoot "conn\.env"
 
 Set-Location $repoRoot
 
@@ -43,9 +42,15 @@ function Invoke-Docker {
         [string[]]$Arguments
     )
 
-    docker @Arguments
+    $effectiveArguments = $Arguments
+    if ($Arguments.Count -gt 0 -and $Arguments[0] -eq "compose") {
+        $remainingArguments = @($Arguments | Select-Object -Skip 1)
+        $effectiveArguments = @("compose", "--env-file", $envFile) + $remainingArguments
+    }
+
+    docker @effectiveArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Docker command failed: docker $($Arguments -join ' ')"
+        throw "Docker command failed: docker $($effectiveArguments -join ' ')"
     }
 }
 
@@ -86,7 +91,7 @@ function Get-PortOwner {
 function Wait-Database {
     Write-Step "Waiting for PostgreSQL"
     for ($i = 1; $i -le 30; $i++) {
-        docker compose exec -T clinic_db pg_isready -U $env:CLINIC_DATABASE_USER -d $env:CLINIC_DATABASE_NAME *> $null
+        docker compose --env-file $envFile exec -T clinic_db pg_isready -U $env:CLINIC_DATABASE_USER -d $env:CLINIC_DATABASE_NAME *> $null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "PostgreSQL is ready."
             return
@@ -95,7 +100,7 @@ function Wait-Database {
     }
 
     Write-Host "PostgreSQL logs:" -ForegroundColor Yellow
-    docker compose logs clinic_db
+    docker compose --env-file $envFile logs clinic_db
     throw "PostgreSQL did not become ready in time."
 }
 
@@ -104,7 +109,7 @@ function Test-BackendDatabaseConnection {
     & $venvPython -c "import os, psycopg; psycopg.connect(host=os.environ['CLINIC_DATABASE_HOST'], port=os.environ['CLINIC_DATABASE_PORT'], dbname=os.environ['CLINIC_DATABASE_NAME'], user=os.environ['CLINIC_DATABASE_USER'], password=os.environ['CLINIC_DATABASE_PASSWORD']).execute('select 1'); print('Database connection OK')"
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Host "The backend cannot connect to PostgreSQL using the settings from conn\.env and conn\backend.env." -ForegroundColor Red
+        Write-Host "The backend cannot connect to PostgreSQL using the settings from conn\.env." -ForegroundColor Red
         Write-Host ""
         Write-Host "Verify that PostgreSQL publishes port 5432 and that conn\.env matches the credentials used to initialize the Docker volume."
         throw "Backend database connection failed."
@@ -144,7 +149,6 @@ Write-Host "clinic-label-print startup"
 Write-Host "Mode: $Mode"
 
 Import-EnvFile $envFile
-Import-EnvFile $secretsFile
 
 Write-Step "Checking Docker"
 docker info *> $null

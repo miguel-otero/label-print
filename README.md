@@ -149,9 +149,12 @@ CLINIC_PRINTER_NAME=ZDesigner ZD230-203dpi ZPL
 CLINIC_PRINTER_CONNECTION=windows_spooler
 ```
 
-Las credenciales se guardan exclusivamente en `conn/.env`, que esta excluido de Git. Usa `conn/.env.example` como referencia:
+La configuracion local y las credenciales se guardan en `conn/.env`, que esta excluido de Git. Usa `conn/.env.example` como referencia:
 
 ```env
+CLINIC_DATA_SOURCE=postgres
+CLINIC_DATABASE_HOST=localhost
+CLINIC_DATABASE_PORT=5432
 CLINIC_DATABASE_NAME=...
 CLINIC_DATABASE_USER=...
 CLINIC_DATABASE_PASSWORD=...
@@ -162,7 +165,13 @@ CLINIC_EXTERNAL_DATABASE_USER=...
 CLINIC_EXTERNAL_DATABASE_PASSWORD=...
 ```
 
-En Docker Compose, el backend reemplaza internamente el host por `clinic_db` y `CLINIC_PRINTER_CONNECTION` por `simulated`, porque un contenedor Linux no puede acceder a la cola USB de Windows.
+Para ejecutar Compose directamente, indica el archivo porque no se encuentra en la raiz:
+
+```powershell
+docker compose --env-file .\conn\.env up -d
+```
+
+En Docker Compose, el backend reemplaza internamente el host local por `clinic_db` y `CLINIC_PRINTER_CONNECTION` por `simulated`, porque un contenedor Linux no puede acceder a la cola USB de Windows.
 
 ## Sincronizacion de inventario
 
@@ -275,13 +284,13 @@ python -m compileall app\backend\app
 Validar configuracion Docker:
 
 ```powershell
-docker compose config
+docker compose --env-file .\conn\.env config
 ```
 
 Build frontend:
 
 ```powershell
-docker compose run --rm --no-deps clinic_frontend npm run build
+docker compose --env-file .\conn\.env run --rm --no-deps clinic_frontend npm run build
 ```
 
 ## Estructura relevante

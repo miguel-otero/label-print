@@ -28,7 +28,7 @@ Ese comando usa `-Mode Usb` por defecto. Levanta PostgreSQL y el frontend en Doc
 http://localhost:8080/api
 ```
 
-El backend local se conecta a PostgreSQL usando el host y puerto configurados en `conn/backend.env`. Las credenciales se leen de `conn/.env`.
+El backend local se conecta a PostgreSQL usando la configuracion de `conn/.env`.
 
 ```env
 CLINIC_DATABASE_HOST=localhost
@@ -37,7 +37,7 @@ CLINIC_DATABASE_PORT=5432
 
 ## Configuracion
 
-La configuracion base vive en `conn/backend.env`.
+La configuracion local y las credenciales viven en `conn/.env`, ignorado por Git.
 
 Datos PostgreSQL:
 
@@ -47,7 +47,7 @@ CLINIC_DATABASE_HOST=localhost
 CLINIC_DATABASE_PORT=5432
 ```
 
-Los valores `CLINIC_DATABASE_NAME`, `CLINIC_DATABASE_USER` y `CLINIC_DATABASE_PASSWORD` viven exclusivamente en `conn/.env`, ignorado por Git. El archivo `conn/.env.example` documenta las variables requeridas.
+El archivo `conn/.env.example` documenta todas las variables requeridas sin incluir credenciales reales.
 
 ## Sincronizacion SQL Server
 
@@ -60,7 +60,7 @@ CLINIC_EXTERNAL_DATABASE_USER=...
 CLINIC_EXTERNAL_DATABASE_PASSWORD=...
 ```
 
-El puerto, intervalo, retencion maxima y ventana de relectura se configuran en `conn/backend.env`. `inventory` se reemplaza completamente y `inventory_entries` se actualiza de forma incremental, conservando solo los ultimos dos meses calendario.
+El puerto, intervalo, retencion maxima y ventana de relectura se configuran en `conn/.env`. `inventory` se reemplaza completamente y `inventory_entries` se actualiza de forma incremental, conservando solo los ultimos dos meses calendario.
 
 Variables operativas:
 
