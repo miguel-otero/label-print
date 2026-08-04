@@ -27,7 +27,6 @@ services:
       - ./app/backend:/app
       - ./scripts:/scripts:ro
     env_file:
-      - ./conn/backend.env
       - ./conn/.env
     environment:
       CLINIC_DATABASE_HOST: clinic_db
@@ -54,7 +53,7 @@ services:
       - /app/.vite
       - /app/.nitro
     env_file:
-      - ./conn/frontend.env
+      - ./conn/.env
     ports:
       - "8083:80"
     depends_on:

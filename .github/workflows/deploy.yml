@@ -12,9 +12,7 @@ permissions:
 env:
   CONN_VARIABLES: |
     [
-      {"path":".env", "var":"ENV_FILE"},
-      {"path":"backend.env", "var":"BACKEND_ENV_FILE"},
-      {"path":"frontend.env", "var":"FRONTEND_ENV_FILE"}
+      {"path":".env", "var":"ENV_FILE"}
     ]
 
 jobs:
@@ -33,8 +31,6 @@ jobs:
         shell: bash
         env:
           ENV_FILE: ${{ vars.ENV_FILE }}
-          BACKEND_ENV_FILE: ${{ vars.BACKEND_ENV_FILE }}
-          FRONTEND_ENV_FILE: ${{ vars.FRONTEND_ENV_FILE }}
         run: |
           set -euo pipefail
 
