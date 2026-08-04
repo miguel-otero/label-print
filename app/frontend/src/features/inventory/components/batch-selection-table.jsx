@@ -1,31 +1,38 @@
 import { Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { TableRender } from "@/shared/layouts/table-render";
+import { cn, formatPresentationQuantity } from "@/shared/utils/utils";
 
-export function BatchSelectionTable({ items, onRemove }) {
+export function BatchSelectionTable({ items, onRemove, centered = false }) {
   const columns = [
     {
       key: "reference",
       header: "Referencia",
-      cellClassName: "font-mono text-xs",
+      headClassName: centered ? "text-center" : undefined,
+      cellClassName: cn("font-mono text-xs", centered && "text-center"),
       render: (item) => item.inventory.reference,
     },
     {
       key: "presentation",
       header: "Presentación",
-      cellClassName: "text-sm",
-      render: (item) => item.product?.presentation_quantity ?? "Pendiente de selección",
+      headClassName: centered ? "text-center" : undefined,
+      cellClassName: cn("text-sm", centered && "text-center"),
+      render: (item) =>
+        item.product
+          ? formatPresentationQuantity(item.product.presentation_quantity)
+          : "Pendiente de selección",
     },
     {
       key: "labels",
       header: "Etiquetas",
-      headClassName: "w-28 text-right",
-      cellClassName: "text-right font-mono",
+      headClassName: cn("w-28", centered ? "text-center" : "text-right"),
+      cellClassName: cn("font-mono", centered ? "text-center" : "text-right"),
       render: (item) => item.quantity,
     },
     {
       key: "actions",
-      headClassName: "w-14",
+      headClassName: cn("w-14", centered && "text-center"),
+      cellClassName: centered ? "text-center" : undefined,
       render: (item) => (
         <Button
           variant="ghost"

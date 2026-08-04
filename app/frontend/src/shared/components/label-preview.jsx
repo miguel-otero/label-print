@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getFormatPreview } from "@/shared/api/api";
 import { Package } from "lucide-react";
+import { formatPresentationQuantity } from "@/shared/utils/utils";
 
 function Barcode({ value, compact = false }) {
   // Stylized visual barcode placeholder (not real ZPL).
@@ -288,7 +289,10 @@ function resolveElementValue(element, product, filledSlots) {
   return element.field
     .replace(/Descripcion\d*/g, product.description)
     .replace(/Codigo(?!barras)\d*/g, product.product_code)
-    .replace(/Presentacion\d*/g, product.presentation_quantity || "1 unidad")
+    .replace(
+      /Presentacion\d*/g,
+      formatPresentationQuantity(product.presentation_quantity) || "1 unidad",
+    )
     .replace(/Codigobarras\d*/g, product.barcode);
 }
 
@@ -345,7 +349,7 @@ export function LabelPreview({ product, format, quantity = 1 }) {
                   {product.product_code}
                 </div>
                 <div className="text-[10px] leading-tight">
-                  Presentacion: {product.presentation_quantity}
+                  Presentacion: {formatPresentationQuantity(product.presentation_quantity)}
                 </div>
               </div>
               <Barcode value={product.barcode} />

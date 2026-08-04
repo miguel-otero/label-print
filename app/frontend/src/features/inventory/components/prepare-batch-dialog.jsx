@@ -11,6 +11,7 @@ import {
 import { Input } from "@/shared/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { TableRender } from "@/shared/layouts/table-render";
+import { formatPresentationQuantity } from "@/shared/utils/utils";
 
 export function PrepareBatchDialog({
   open,
@@ -60,7 +61,7 @@ export function PrepareBatchDialog({
           <SelectContent>
             {item.inventory.presentations.map((product) => (
               <SelectItem key={product.id} value={String(product.id)}>
-                {product.presentation_quantity} · {product.barcode}
+                {formatPresentationQuantity(product.presentation_quantity)} · {product.barcode}
               </SelectItem>
             ))}
           </SelectContent>

@@ -495,7 +495,7 @@ export function InventoryEntryPrintPage() {
                   Selecciona un documento con articulos imprimibles.
                 </div>
               ) : (
-                <BatchSelectionTable items={selectedItems} onRemove={removeSelected} />
+                <BatchSelectionTable items={selectedItems} onRemove={removeSelected} centered />
               )}
             </CardContent>
           </Card>
