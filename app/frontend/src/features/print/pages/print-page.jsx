@@ -32,7 +32,7 @@ export function PrintPage() {
   const [formats, setFormats] = useState([]);
   const [selected, setSelected] = useState(null);
   const [formatId, setFormatId] = useState("");
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState("");
   const [printing, setPrinting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -85,7 +85,8 @@ export function PrintPage() {
     selectedLineCount === 0
       ? "Todas"
       : `${selectedLineCount} línea${selectedLineCount === 1 ? "" : "s"}`;
-  const canPrint = !!selected && !!selectedFormat && quantity > 0 && !printing;
+  const canPrint =
+    !!selected && !!selectedFormat && Number.isInteger(quantity) && quantity > 0 && !printing;
 
   async function handlePrint() {
     if (!selected || !selectedFormat) return;

@@ -27,6 +27,7 @@ export function PrintConfigurationPanel({
 }) {
   const [showPreview, setShowPreview] = useState(true);
   const selectedFormat = formats.find((format) => String(format.id) === formatId) ?? null;
+  const numericQuantity = Number.isFinite(Number(quantity)) ? Number(quantity) : 0;
   return (
     <div className="space-y-6">
       <Card>
@@ -62,7 +63,7 @@ export function PrintConfigurationPanel({
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={() => onQuantityChange(Math.max(1, quantity - 3))}
+                    onClick={() => onQuantityChange(Math.max(1, numericQuantity - 3))}
                     aria-label="Restar 3 etiquetas"
                   >
                     -3
@@ -71,7 +72,7 @@ export function PrintConfigurationPanel({
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={() => onQuantityChange(Math.max(1, quantity - 1))}
+                    onClick={() => onQuantityChange(Math.max(1, numericQuantity - 1))}
                     aria-label="Restar 1 etiqueta"
                   >
                     <Minus className="h-4 w-4" />
@@ -80,16 +81,18 @@ export function PrintConfigurationPanel({
                     type="number"
                     min={1}
                     value={quantity}
-                    onChange={(event) =>
-                      onQuantityChange(Math.max(1, Number.parseInt(event.target.value || "1", 10)))
-                    }
+                    placeholder="Digite la cantidad"
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      onQuantityChange(value === "" ? "" : Number.parseInt(value, 10));
+                    }}
                     className="text-center"
                   />
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={() => onQuantityChange(quantity + 1)}
+                    onClick={() => onQuantityChange(Math.max(1, numericQuantity + 1))}
                     aria-label="Sumar 1 etiqueta"
                   >
                     <Plus className="h-4 w-4" />
@@ -98,7 +101,7 @@ export function PrintConfigurationPanel({
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={() => onQuantityChange(quantity + 3)}
+                    onClick={() => onQuantityChange(Math.max(1, numericQuantity + 3))}
                     aria-label="Sumar 3 etiquetas"
                   >
                     +3
