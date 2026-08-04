@@ -322,7 +322,7 @@ export function InventoryPrintPage() {
       setRefreshKey((value) => value + 1);
       setRefreshing(false);
     }
-    if (synchronized) toast.success("Sincronizacion con Siesa completada");
+    if (synchronized) toast.success("Sincronización externa completada");
   }
 
   async function handlePrint() {
@@ -370,7 +370,7 @@ export function InventoryPrintPage() {
       actions={
         <Button variant="outline" size="sm" onClick={refreshInventory} disabled={refreshing}>
           <RefreshCw className={`h-4 w-4 sm:mr-2 ${refreshing ? "animate-spin" : ""}`} />
-          <span className="hidden sm:inline">Sincronizar con Siesa</span>
+          <span className="hidden sm:inline">Sincronización Externa</span>
         </Button>
       }
     >
@@ -391,7 +391,7 @@ export function InventoryPrintPage() {
                 disabled={refreshing}
               >
                 <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-                Sincronizar con Siesa
+                Sincronización Externa
               </Button>
               <div className="grid gap-3 md:grid-cols-[180px_1fr_180px]">
                 <div className="space-y-1.5">

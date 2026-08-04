@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/shared/layouts/app-layout";
 import { PrintConfigurationPanel } from "@/shared/components/print-configuration-panel";
+import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { LineFilter } from "@/features/print/components/line-filter";
 import { ProductsTable } from "@/features/print/components/products-table";
 import { ProductsPagination } from "@/features/print/components/products-pagination";
-import { getFormats, getProductLines, printLabel, searchProducts } from "@/shared/api/api";
+import {
+  getFormats,
+  getProductLines,
+  printLabel,
+  searchProducts,
+  syncInventory,
+} from "@/shared/api/api";
 
 const PRODUCTS_PAGE_SIZE = 100;
 
@@ -27,6 +34,7 @@ export function PrintPage() {
   const [formatId, setFormatId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [printing, setPrinting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     getFormats().then((f) => {
@@ -112,10 +120,37 @@ export function PrintPage() {
     setSelectedLines([]);
   }
 
+  async function synchronizeExternal() {
+    setRefreshing(true);
+    let synchronized = true;
+    try {
+      await syncInventory();
+    } catch (error) {
+      synchronized = false;
+      toast.warning("No hubo sincronización externa", {
+        description:
+          error instanceof Error
+            ? `${error.message} Se recargarán los datos actuales de PostgreSQL.`
+            : "Se recargarán los datos actuales de PostgreSQL.",
+      });
+    } finally {
+      setPage(1);
+      await runSearch(debouncedQuery, 1);
+      setRefreshing(false);
+    }
+    if (synchronized) toast.success("Sincronización externa completada");
+  }
+
   return (
     <AppLayout
       title="Imprimir etiquetas"
       subtitle="Buscar producto y enviar a impresora de etiquetas."
+      actions={
+        <Button variant="outline" size="sm" onClick={synchronizeExternal} disabled={refreshing}>
+          <RefreshCw className={`h-4 w-4 sm:mr-2 ${refreshing ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">Sincronización Externa</span>
+        </Button>
+      }
     >
       <div className="grid min-w-0 gap-6 xl:min-h-[calc(100vh-6.5rem)] xl:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-6 xl:col-span-2 xl:min-h-0">
@@ -128,6 +163,15 @@ export function PrintPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
+                <Button
+                  variant="outline"
+                  className="w-full sm:hidden"
+                  onClick={synchronizeExternal}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                  Sincronización Externa
+                </Button>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
