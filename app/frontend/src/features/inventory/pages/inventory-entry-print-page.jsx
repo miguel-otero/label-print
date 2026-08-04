@@ -322,7 +322,7 @@ export function InventoryEntryPrintPage() {
       header: "Linea",
       headClassName: `${headClassName} w-32`,
       cellClassName: centerCellClassName,
-      render: (item) => item.presentations[0]?.line ?? "Sin linea",
+      render: (item) => item.line ?? "Sin linea",
     },
     {
       key: "reference",
@@ -336,7 +336,7 @@ export function InventoryEntryPrintPage() {
       header: "Descripcion",
       headClassName,
       cellClassName: "text-center align-middle text-sm text-foreground",
-      render: (item) => item.presentations[0]?.description ?? "Producto no registrado",
+      render: (item) => item.description ?? "Producto no registrado",
     },
     {
       key: "quantity",

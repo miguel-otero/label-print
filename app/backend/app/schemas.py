@@ -116,6 +116,8 @@ class InventoryEntryItem(BaseModel):
     document: str
     date: date
     reference: str
+    line: str | None = None
+    description: str | None = None
     entry_quantity: Decimal
     presentations: list[Product]
     printable: bool

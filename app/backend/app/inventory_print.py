@@ -322,8 +322,8 @@ class InventoryPrintService:
                    entry.fecha as date,
                    entry.referencia as reference,
                    entry.entradas_inv as entry_quantity,
-                   min(p.linea) filter (where p.id is not null) as sort_line,
-                   min(p.descripcion) filter (where p.id is not null) as sort_description,
+                   product_info.line,
+                   product_info.description,
                    coalesce(
                        jsonb_agg(
                            jsonb_build_object(
@@ -347,14 +347,25 @@ class InventoryPrintService:
                        '[]'::jsonb
                    ) as presentations
             from {entries} as entry
+            left join lateral (
+                select source.linea as line,
+                       source.descripcion as description
+                from {products} as source
+                where source.referencia = entry.referencia
+                order by source.codigo_propio desc, source.id
+                limit 1
+            ) as product_info on true
             left join {products} as p
               on p.referencia = entry.referencia
              and p.codigo_propio = true
             where entry.bodega = %(warehouse)s
               and entry.documento = %(document)s
             group by entry.id_inventory_entries, entry.bodega, entry.documento,
-                     entry.fecha, entry.referencia, entry.entradas_inv
-            order by sort_line nulls last, sort_description nulls last, entry.referencia
+                     entry.fecha, entry.referencia, entry.entradas_inv,
+                     product_info.line, product_info.description
+            order by product_info.line nulls last,
+                     product_info.description nulls last,
+                     entry.referencia
             """
         ).format(entries=entries_table, products=products_table)
 
@@ -830,7 +841,7 @@ class InventoryPrintService:
         if entry_quantity <= 0:
             reason = "La entrada no es positiva."
         elif not presentations:
-            reason = "No tiene una presentacion valida en productos."
+            reason = "No tiene presentaciones imprimibles."
         else:
             reason = None
 
@@ -840,6 +851,8 @@ class InventoryPrintService:
             document=row["document"],
             date=row["date"],
             reference=row["reference"],
+            line=row["line"],
+            description=row["description"],
             entry_quantity=entry_quantity,
             presentations=presentations,
             printable=reason is None,
