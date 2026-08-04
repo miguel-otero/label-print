@@ -5,6 +5,12 @@ const headClassName =
   "sticky top-0 z-10 bg-card px-1.5 text-center text-xs text-foreground shadow-sm 2xl:text-sm";
 const centerCell = "px-1.5 text-center text-xs text-foreground 2xl:text-sm";
 
+function formatQuantityPerUnit(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const quantity = Number(value);
+  return Number.isFinite(quantity) ? String(Math.round(quantity)) : value;
+}
+
 export function ProductsTable({ products, loading, selected, onSelect }) {
   const columns = [
     {
@@ -47,7 +53,7 @@ export function ProductsTable({ products, loading, selected, onSelect }) {
       header: "Cant. por UM",
       headClassName: cn(headClassName, "w-[9%]"),
       cellClassName: centerCell,
-      render: (product) => product.quantity_per_unit ?? "",
+      render: (product) => formatQuantityPerUnit(product.quantity_per_unit),
     },
   ];
 
