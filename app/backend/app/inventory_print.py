@@ -286,7 +286,7 @@ class InventoryPrintService:
                   or referencia ilike %(pattern)s
               )
             group by documento, bodega
-            order by max(fecha) desc, documento
+            order by max(fecha) desc, documento desc
             """
         ).format(entries=entries_table)
 
