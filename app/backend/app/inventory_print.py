@@ -5,7 +5,8 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 
-from app.printer import BatchLabel, Printer
+from app.print_queue import PrintQueueService
+from app.printer import BatchLabel, build_batch_queue_documents
 from app.schemas import (
     InventoryBatchItemResult,
     InventoryBatchPrintRequest,
@@ -31,9 +32,9 @@ class InventoryPrintError(RuntimeError):
 
 
 class InventoryPrintService:
-    def __init__(self, settings: Settings, printer: Printer) -> None:
+    def __init__(self, settings: Settings, print_queue: PrintQueueService) -> None:
         self.settings = settings
-        self.printer = printer
+        self.print_queue = print_queue
 
     def _connect(self) -> psycopg.Connection:
         return psycopg.connect(
@@ -493,7 +494,7 @@ class InventoryPrintService:
                             requested_labels=item.quantity,
                             printed_labels=0,
                             failed_labels=0,
-                            status="error",
+                            status="queued",
                         ),
                         product,
                     )
@@ -507,60 +508,34 @@ class InventoryPrintService:
         if not labels:
             raise InventoryPrintError("El lote no tiene etiquetas para imprimir.")
         requested_labels = len(labels)
-        outcomes = self.printer.print_batch(label_format=label_format, labels=labels)
-
-        results: list[InventoryBatchItemResult] = []
-        for index, (result, _) in enumerate(validated):
-            outcome = outcomes[index]
-            if outcome.failed_labels == 0:
-                status = "success"
-            elif outcome.printed_labels == 0:
-                status = "error"
-            else:
-                status = "partial"
-            results.append(
-                result.model_copy(
-                    update={
-                        "printed_labels": outcome.printed_labels,
-                        "failed_labels": outcome.failed_labels,
-                        "status": status,
-                        "message": "; ".join(outcome.errors) or None,
-                    }
-                )
-            )
-
-        printed_labels = sum(item.printed_labels for item in results)
-        failed_labels = sum(item.failed_labels for item in results)
-        if failed_labels == 0:
-            batch_status = "success"
-            message = None
-        elif printed_labels == 0:
-            batch_status = "error"
-            message = "No se pudo imprimir ninguna etiqueta del lote."
-        else:
-            batch_status = "partial"
-            message = (
-                f"Se imprimieron {printed_labels} etiquetas y {failed_labels} presentaron error."
-            )
+        results = [result for result, _ in validated]
+        documents = build_batch_queue_documents(label_format=label_format, labels=labels)
 
         batch_id = self._save_batch_history(
             user=user,
             format_code=label_format.code,
             warehouse=payload.warehouse,
             requested_labels=requested_labels,
-            printed_labels=printed_labels,
-            failed_labels=failed_labels,
-            status=batch_status,
-            message=message,
+            printed_labels=0,
+            failed_labels=0,
+            status="queued",
+            message=None,
             items=results,
         )
-        return InventoryBatchPrintResponse(
-            batch_id=batch_id,
-            status=batch_status,
+        job_id = self.print_queue.enqueue(
+            kind="inventory",
+            documents=documents,
             requested_labels=requested_labels,
-            printed_labels=printed_labels,
-            failed_labels=failed_labels,
-            message=message,
+            batch_id=batch_id,
+        )
+        return InventoryBatchPrintResponse(
+            job_id=job_id,
+            batch_id=batch_id,
+            status="queued",
+            requested_labels=requested_labels,
+            printed_labels=0,
+            failed_labels=0,
+            message="Lote agregado a la cola de impresion.",
             items=results,
         )
 
@@ -671,7 +646,7 @@ class InventoryPrintService:
                             requested_labels=item.quantity,
                             printed_labels=0,
                             failed_labels=0,
-                            status="error",
+                            status="queued",
                         ),
                         product,
                     )
@@ -685,63 +660,37 @@ class InventoryPrintService:
         if not labels:
             raise InventoryPrintError("El lote no tiene etiquetas para imprimir.")
         requested_labels = len(labels)
-        outcomes = self.printer.print_batch(label_format=label_format, labels=labels)
-
-        results: list[InventoryBatchItemResult] = []
-        for index, (result, _) in enumerate(validated):
-            outcome = outcomes[index]
-            if outcome.failed_labels == 0:
-                status = "success"
-            elif outcome.printed_labels == 0:
-                status = "error"
-            else:
-                status = "partial"
-            results.append(
-                result.model_copy(
-                    update={
-                        "printed_labels": outcome.printed_labels,
-                        "failed_labels": outcome.failed_labels,
-                        "status": status,
-                        "message": "; ".join(outcome.errors) or None,
-                    }
-                )
-            )
-
-        printed_labels = sum(item.printed_labels for item in results)
-        failed_labels = sum(item.failed_labels for item in results)
-        if failed_labels == 0:
-            batch_status = "success"
-            message = None
-        elif printed_labels == 0:
-            batch_status = "error"
-            message = "No se pudo imprimir ninguna etiqueta del lote."
-        else:
-            batch_status = "partial"
-            message = (
-                f"Se imprimieron {printed_labels} etiquetas y {failed_labels} presentaron error."
-            )
+        results = [result for result, _ in validated]
+        documents = build_batch_queue_documents(label_format=label_format, labels=labels)
 
         batch_id = self._save_batch_history(
             user=user,
             format_code=label_format.code,
             warehouse=payload.warehouse,
             requested_labels=requested_labels,
-            printed_labels=printed_labels,
-            failed_labels=failed_labels,
-            status=batch_status,
-            message=message,
+            printed_labels=0,
+            failed_labels=0,
+            status="queued",
+            message=None,
             items=results,
             source="inventory_entry",
             source_document=payload.document,
             source_date=source_date,
         )
-        return InventoryBatchPrintResponse(
-            batch_id=batch_id,
-            status=batch_status,
+        job_id = self.print_queue.enqueue(
+            kind="inventory_entry",
+            documents=documents,
             requested_labels=requested_labels,
-            printed_labels=printed_labels,
-            failed_labels=failed_labels,
-            message=message,
+            batch_id=batch_id,
+        )
+        return InventoryBatchPrintResponse(
+            job_id=job_id,
+            batch_id=batch_id,
+            status="queued",
+            requested_labels=requested_labels,
+            printed_labels=0,
+            failed_labels=0,
+            message="Lote agregado a la cola de impresion.",
             items=results,
         )
 
@@ -750,10 +699,13 @@ class InventoryPrintService:
         with self._connect() as conn:
             batches = conn.execute(
                 """
-                select id, timestamp, "user", format, warehouse, requested_labels,
-                       printed_labels, failed_labels, status, message,
-                       source, source_document, source_date
-                from print_batches
+                select batch.id, batch.timestamp, batch."user", batch.format, batch.warehouse,
+                       batch.requested_labels, batch.printed_labels, batch.failed_labels,
+                       batch.status, batch.message, batch.source, batch.source_document,
+                       batch.source_date,
+                       (select max(jobs.id) from print_jobs jobs
+                        where jobs.batch_id = batch.id) as job_id
+                from print_batches batch
                 order by timestamp desc
                 limit 200
                 """

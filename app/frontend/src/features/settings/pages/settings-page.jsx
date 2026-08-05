@@ -14,6 +14,7 @@ import {
   getFormats,
   getFormatTemplates,
   getInventoryPrintSettings,
+  getPrinterStatus,
   pingBackend,
   printTestLabel,
   saveFormat,
@@ -37,6 +38,7 @@ export function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [printingTest, setPrintingTest] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [agentStatus, setAgentStatus] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [formats, setFormats] = useState([]);
   const [loadingFormats, setLoadingFormats] = useState(true);
@@ -60,6 +62,18 @@ export function SettingsPage() {
           description: error instanceof Error ? error.message : "Error desconocido",
         }),
       );
+    async function refreshAgentStatus() {
+      try {
+        const status = await getPrinterStatus();
+        setAgentStatus(status);
+        setPrinterName(status.printer_name);
+      } catch {
+        setAgentStatus(null);
+      }
+    }
+    refreshAgentStatus();
+    const interval = window.setInterval(refreshAgentStatus, 5000);
+    return () => window.clearInterval(interval);
   }, []);
 
   async function handleSaveInventoryLimit() {
@@ -114,7 +128,7 @@ export function SettingsPage() {
         message: res.message ?? `Impresora ${res.printer} OK`,
         at: new Date().toISOString(),
       });
-      toast.success("Impresora respondió correctamente");
+      toast.success("Prueba agregada a la cola", { description: `Trabajo #${res.job_id}` });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error desconocido";
       setLastResult({ ok: false, message: msg, at: new Date().toISOString() });
@@ -134,7 +148,9 @@ export function SettingsPage() {
         message: res.message ?? "Etiqueta de prueba enviada",
         at: new Date().toISOString(),
       });
-      toast.success("Etiqueta de prueba enviada");
+      toast.success("Etiqueta de prueba agregada a la cola", {
+        description: `Trabajo #${res.job_id}`,
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error";
       setLastResult({ ok: false, message: msg, at: new Date().toISOString() });
@@ -237,7 +253,12 @@ export function SettingsPage() {
           onTestLabel={handleTestLabel}
         />
 
-        <SystemStatusCard backendOk={backendOk} printerName={printerName} lastResult={lastResult} />
+        <SystemStatusCard
+          backendOk={backendOk}
+          printerName={printerName}
+          agentStatus={agentStatus}
+          lastResult={lastResult}
+        />
 
         <InventoryLimitCard
           value={inventoryPrintLimit}

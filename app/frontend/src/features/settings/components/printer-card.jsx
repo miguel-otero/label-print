@@ -16,7 +16,7 @@ export function PrinterCard({
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Impresora configurada</CardTitle>
-        <CardDescription>Nombre que utiliza el backend local para imprimir.</CardDescription>
+        <CardDescription>Cola configurada en el agente Windows.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
@@ -25,6 +25,7 @@ export function PrinterCard({
             id="printer"
             value={printerName}
             onChange={(e) => onPrinterNameChange(e.target.value)}
+            readOnly
           />
         </div>
         <div className="flex flex-wrap gap-2">

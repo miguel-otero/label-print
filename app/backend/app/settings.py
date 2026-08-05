@@ -49,7 +49,9 @@ class Settings(BaseSettings):
     warehouse_app_database_engine: str = "postgres"
 
     printer_name: str = "Zebra ZD230"
-    printer_connection: str = "simulated"
+    print_agent_token: str = ""
+    print_agent_id: str = "windows-primary"
+    print_agent_stale_seconds: int = Field(default=120, ge=30)
 
     model_config = SettingsConfigDict(
         env_prefix="CLINIC_",

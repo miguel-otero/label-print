@@ -7,6 +7,7 @@ import textwrap
 import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from collections import Counter
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -29,6 +30,12 @@ class BatchItemPrintOutcome:
     printed_labels: int = 0
     failed_labels: int = 0
     errors: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class QueuedZplDocument:
+    zpl: str
+    item_counts: dict[int, int]
 
 
 class Printer(ABC):
@@ -323,6 +330,43 @@ def build_zpl_jobs(
         )
 
     raise PrinterError(f"El formato '{label_format.code}' no tiene plantilla ZPL configurada")
+
+
+def build_individual_queue_documents(
+    *,
+    label_format: LabelFormat,
+    product: Product,
+    quantity: int,
+) -> list[QueuedZplDocument]:
+    jobs = build_zpl_jobs(label_format=label_format, product=product, quantity=quantity)
+    documents: list[QueuedZplDocument] = []
+    remaining = quantity
+    for zpl in jobs:
+        label_count = min(3, remaining)
+        documents.append(QueuedZplDocument(zpl=zpl, item_counts={0: label_count}))
+        remaining -= label_count
+    return documents
+
+
+def build_batch_queue_documents(
+    *,
+    label_format: LabelFormat,
+    labels: list[BatchLabel],
+) -> list[QueuedZplDocument]:
+    documents: list[QueuedZplDocument] = []
+    for offset in range(0, len(labels), 3):
+        document_labels = labels[offset : offset + 3]
+        zpl = build_mixed_zpl_job(
+            label_format=label_format,
+            products=[label.product for label in document_labels],
+        )
+        documents.append(
+            QueuedZplDocument(
+                zpl=zpl,
+                item_counts=dict(Counter(label.item_key for label in document_labels)),
+            )
+        )
+    return documents
 
 
 def build_legacy_zpl_jobs(

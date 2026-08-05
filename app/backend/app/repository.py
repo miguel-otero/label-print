@@ -12,7 +12,7 @@ from app.schemas import LabelFormat, LabelFormatPayload, PrintHistory, Product
 from app.settings import Settings
 
 
-PrintStatus = Literal["success", "error"]
+PrintStatus = Literal["queued", "processing", "success", "partial", "error", "unknown"]
 
 
 def normalize(value: str) -> str:
@@ -439,9 +439,12 @@ class PostgresRepository:
             rows = conn.execute(
                 sql.SQL(
                     """
-                    select id, timestamp, "user", product_code, product_description,
-                           format, quantity, status, message
-                    from {table}
+                    select history.id, history.timestamp, history."user", history.product_code,
+                           history.product_description, history.format, history.quantity,
+                           history.status, history.message,
+                           (select max(jobs.id) from print_jobs jobs
+                            where jobs.history_id = history.id) as job_id
+                    from {table} history
                     order by timestamp desc
                     limit 200
                     """

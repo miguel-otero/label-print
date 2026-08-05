@@ -338,20 +338,9 @@ export function InventoryPrintPage() {
           quantity: item.quantity,
         })),
       });
-      if (result.status === "success") {
-        toast.success(`Lote #${result.batch_id} enviado`, {
-          description: `${result.printed_labels} etiquetas impresas.`,
-        });
-      } else {
-        const failedItems = result.items
-          .filter((item) => item.status !== "success")
-          .map((item) => `${item.reference}: ${item.message ?? "Error de impresión"}`)
-          .join(" · ");
-        toast.warning(`Lote #${result.batch_id} finalizado con errores`, {
-          description: failedItems || result.message || "Revisa el historial del lote.",
-          duration: 10000,
-        });
-      }
+      toast.success(`Lote #${result.batch_id} agregado a la cola`, {
+        description: `${result.requested_labels} etiquetas · trabajo #${result.job_id}`,
+      });
       setPrepareOpen(false);
       setSelected(new Map());
     } catch (error) {

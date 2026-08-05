@@ -212,6 +212,14 @@ export async function printTestLabel() {
     method: "POST",
   });
 }
+
+export async function getPrinterStatus() {
+  return apiRequest("/impresora/status");
+}
+
+export async function retryPrintJob(jobId) {
+  return apiRequest(`/trabajos/${jobId}/reintentar`, { method: "POST" });
+}
 // GET /historial
 export async function getHistory() {
   return apiRequest("/historial");

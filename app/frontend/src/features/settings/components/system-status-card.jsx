@@ -2,7 +2,7 @@ import { CheckCircle2, Printer, Wifi, WifiOff, XCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 import { StatusRow } from "./status-row";
 
-export function SystemStatusCard({ backendOk, printerName, lastResult }) {
+export function SystemStatusCard({ backendOk, printerName, agentStatus, lastResult }) {
   return (
     <Card>
       <CardHeader>
@@ -19,10 +19,19 @@ export function SystemStatusCard({ backendOk, printerName, lastResult }) {
           icon={backendOk ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
         />
         <StatusRow
+          label="Agente Windows"
+          ok={agentStatus?.online === true}
+          pending={agentStatus === null}
+          okText="Conectado"
+          failText="Desconectado"
+          icon={agentStatus?.online ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+        />
+        <StatusRow
           label="Impresora"
-          ok={!!printerName}
-          okText="Configurada"
-          failText="No configurada"
+          ok={agentStatus?.online === true && agentStatus?.printer_ok === true}
+          pending={agentStatus === null}
+          okText={printerName || "Disponible"}
+          failText={agentStatus?.message || "No disponible"}
           icon={<Printer className="h-4 w-4" />}
         />
         <div className="rounded-md border bg-muted/40 p-3 text-sm">

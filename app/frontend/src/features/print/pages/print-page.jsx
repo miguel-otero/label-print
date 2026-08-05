@@ -92,13 +92,13 @@ export function PrintPage() {
     if (!selected || !selectedFormat) return;
     setPrinting(true);
     try {
-      await printLabel({
+      const result = await printLabel({
         formato: selectedFormat.code,
         producto_id: selected.id,
         cantidad: quantity,
       });
-      toast.success("Etiqueta enviada a impresora", {
-        description: `${quantity} x ${selected.product_code} (${selectedFormat.code})`,
+      toast.success("Trabajo agregado a la cola", {
+        description: `${quantity} x ${selected.product_code} · trabajo #${result.job_id}`,
       });
     } catch (e) {
       toast.error("No se pudo imprimir", {

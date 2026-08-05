@@ -47,26 +47,31 @@ class PrintRequest(BaseModel):
 
 class PrintResponse(BaseModel):
     ok: bool
+    job_id: int
     history_id: int
+    status: Literal["queued"] = "queued"
     message: str
 
 
 class PrinterTestResponse(BaseModel):
     ok: bool
     printer: str
-    connection: str
+    connection: str = "windows_agent"
+    job_id: int | None = None
+    status: str | None = None
     message: str | None = None
 
 
 class PrintHistory(BaseModel):
     id: int
+    job_id: int | None = None
     timestamp: datetime
     user: str
     product_code: str
     product_description: str
     format: str
     quantity: int
-    status: Literal["success", "error"]
+    status: Literal["queued", "processing", "success", "partial", "error", "unknown"]
     message: str | None = None
 
 
@@ -159,13 +164,14 @@ class InventoryBatchItemResult(BaseModel):
     requested_labels: int
     printed_labels: int
     failed_labels: int
-    status: Literal["success", "partial", "error"]
+    status: Literal["queued", "processing", "success", "partial", "error", "unknown"]
     message: str | None = None
 
 
 class InventoryBatchPrintResponse(BaseModel):
+    job_id: int
     batch_id: int
-    status: Literal["success", "partial", "error"]
+    status: Literal["queued", "processing", "success", "partial", "error", "unknown"]
     requested_labels: int
     printed_labels: int
     failed_labels: int
@@ -175,6 +181,7 @@ class InventoryBatchPrintResponse(BaseModel):
 
 class PrintBatchHistory(BaseModel):
     id: int
+    job_id: int | None = None
     timestamp: datetime
     user: str
     format: str
@@ -185,6 +192,46 @@ class PrintBatchHistory(BaseModel):
     requested_labels: int
     printed_labels: int
     failed_labels: int
-    status: Literal["success", "partial", "error"]
+    status: Literal["queued", "processing", "success", "partial", "error", "unknown"]
     message: str | None = None
     items: list[InventoryBatchItemResult]
+
+
+class AgentHeartbeatRequest(BaseModel):
+    agent_id: str
+    printer_name: str
+    printer_ok: bool
+    message: str | None = None
+
+
+class PrinterAgentStatus(BaseModel):
+    agent_id: str
+    printer_name: str
+    online: bool
+    printer_ok: bool
+    last_seen_at: datetime | None = None
+    message: str | None = None
+
+
+class AgentPrintDocument(BaseModel):
+    id: int
+    sequence: int
+    zpl: str
+
+
+class AgentPrintJob(BaseModel):
+    id: int
+    kind: str
+    printer_name: str
+    documents: list[AgentPrintDocument]
+
+
+class AgentDocumentResult(BaseModel):
+    document_id: int
+    ok: bool
+    message: str | None = None
+
+
+class AgentJobResultRequest(BaseModel):
+    agent_id: str
+    documents: list[AgentDocumentResult] = Field(min_length=1)

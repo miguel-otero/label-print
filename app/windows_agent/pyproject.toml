@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clinic-label-print-agent"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["pywin32==308"]
+
+[tool.setuptools.packages.find]
+include = ["agent*"]

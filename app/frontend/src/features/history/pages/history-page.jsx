@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { toast } from "sonner";
 import { AppLayout } from "@/shared/layouts/app-layout";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -9,7 +10,7 @@ import { BatchTable } from "@/features/history/components/batch-table";
 import { IndividualTable } from "@/features/history/components/individual-table";
 import { StatusBadge } from "@/features/history/components/status-badge";
 import { DetailRow } from "@/features/history/components/detail-row";
-import { getBatchHistory, getHistory } from "@/shared/api/api";
+import { getBatchHistory, getHistory, retryPrintJob } from "@/shared/api/api";
 
 export function HistoryPage() {
   const [individual, setIndividual] = useState([]);
@@ -20,14 +21,38 @@ export function HistoryPage() {
   const [date, setDate] = useState("");
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [selectedIndividual, setSelectedIndividual] = useState(null);
+  const [retryingJobId, setRetryingJobId] = useState(null);
+
+  async function handleRetry(item) {
+    if (!item.job_id || !window.confirm("¿Desea volver a enviar este trabajo a la cola de impresión?")) return;
+    setRetryingJobId(item.job_id);
+    try {
+      const result = await retryPrintJob(item.job_id);
+      toast.success(`Trabajo #${result.job_id} agregado nuevamente a la cola.`);
+      setSelectedBatch(null);
+      setSelectedIndividual(null);
+    } catch (error) {
+      toast.error(error.message || "No fue posible reintentar el trabajo.");
+    } finally {
+      setRetryingJobId(null);
+    }
+  }
 
   useEffect(() => {
-    Promise.all([getHistory(), getBatchHistory()])
-      .then(([nextIndividual, nextBatches]) => {
-        setIndividual(nextIndividual);
-        setBatches(nextBatches);
-      })
-      .finally(() => setLoading(false));
+    let active = true;
+    async function refreshHistory() {
+      const [nextIndividual, nextBatches] = await Promise.all([getHistory(), getBatchHistory()]);
+      if (!active) return;
+      setIndividual(nextIndividual);
+      setBatches(nextBatches);
+      setLoading(false);
+    }
+    refreshHistory();
+    const interval = window.setInterval(refreshHistory, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
   }, []);
 
   const filteredBatches = useMemo(() => {
@@ -156,6 +181,11 @@ export function HistoryPage() {
                 {selectedBatch.message && (
                   <DetailRow label="Mensaje" value={selectedBatch.message} />
                 )}
+                {["error", "unknown"].includes(selectedBatch.status) && selectedBatch.job_id && (
+                  <Button type="button" variant="destructive" disabled={retryingJobId === selectedBatch.job_id} onClick={() => handleRetry(selectedBatch)}>
+                    {retryingJobId === selectedBatch.job_id ? "Reintentando..." : "Reintentar impresión"}
+                  </Button>
+                )}
                 <div className="pt-2">
                   <h3 className="mb-2 text-sm font-semibold">Artículos</h3>
                   <div className="divide-y rounded-md border">
@@ -212,6 +242,11 @@ export function HistoryPage() {
                 />
                 {selectedIndividual.message && (
                   <DetailRow label="Mensaje" value={selectedIndividual.message} />
+                )}
+                {["error", "unknown"].includes(selectedIndividual.status) && selectedIndividual.job_id && (
+                  <Button type="button" variant="destructive" disabled={retryingJobId === selectedIndividual.job_id} onClick={() => handleRetry(selectedIndividual)}>
+                    {retryingJobId === selectedIndividual.job_id ? "Reintentando..." : "Reintentar impresión"}
+                  </Button>
                 )}
               </div>
             </>

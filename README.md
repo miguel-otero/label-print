@@ -2,16 +2,14 @@
 
 Sistema interno para buscar productos e imprimir etiquetas en una impresora Zebra ZD230 usando ZPL.
 
-La ruta actual del proyecto usa tres contenedores para desarrollo general:
+La aplicación usa tres contenedores y un agente de impresión Windows:
 
 - Frontend: React + TanStack Router/Start + Vite.
 - Backend: FastAPI.
 - Base de datos: PostgreSQL.
 
-El arranque se hace desde un solo script: `scripts/start.ps1`.
-
-- Modo USB, por defecto: frontend y PostgreSQL en Docker, backend local en Windows para acceder a la cola USB.
-- Modo Docker: frontend, backend y PostgreSQL en Docker, con impresion simulada.
+- `scripts/start.ps1` levanta frontend, backend y PostgreSQL en Docker.
+- `ClinicLabelPrintAgent` corre en el equipo Windows conectado a la Zebra y consume una cola persistente del backend.
 
 ## Arquitectura objetivo
 
@@ -26,9 +24,9 @@ Flujo principal:
 1. El operador abre el frontend.
 2. El frontend consume la API FastAPI.
 3. El backend consulta productos, formatos e historial en PostgreSQL.
-4. El backend genera ZPL desde plantillas o desde formatos simples.
-5. En Docker, la impresion queda simulada por defecto.
-6. En Windows local con `start.ps1 -Mode Usb`, el backend puede enviar RAW/ZPL a la cola Windows.
+4. El backend genera ZPL y crea un trabajo persistente en PostgreSQL.
+5. El agente Windows reclama el trabajo mediante API autenticada y envía el ZPL RAW al spooler.
+6. El agente informa el resultado; los resultados ambiguos requieren reintento manual desde el historial.
 
 ## Impresion desde inventario
 
@@ -59,7 +57,7 @@ Las plantillas de tres posiciones pueden mezclar productos distintos en una mism
 
 El historial guarda un registro principal por lote y detalles por articulo. La pantalla `Historial de impresion` separa lotes de inventario e impresiones individuales.
 
-## Arranque recomendado
+## Arranque Docker
 
 Desde la raiz del repositorio:
 
@@ -67,38 +65,10 @@ Desde la raiz del repositorio:
 powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 ```
 
-Ese comando usa `-Mode Usb` por defecto:
-
-- Detiene `clinic_backend` en Docker.
-- Levanta `clinic_db` y `clinic_frontend` en Docker.
-- Usa PostgreSQL en `localhost:5432`.
-- Corre FastAPI local en Windows con `--reload`.
-- Permite acceder a la cola Windows de la Zebra USB.
-
-Si faltan dependencias del backend:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -InstallDeps
-```
-
-Con rebuild del frontend:
+El parámetro heredado `-Mode Docker` continúa siendo válido. Para reconstruir imágenes:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Build
-```
-
-## Arranque completo en Docker
-
-Para levantar los 3 servicios en contenedores:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Mode Docker
-```
-
-Con rebuild:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Mode Docker -Build
 ```
 
 Ver logs:
@@ -107,7 +77,7 @@ Ver logs:
 powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Mode Docker -Logs
 ```
 
-El modo Docker usa `CLINIC_PRINTER_CONNECTION=simulated`.
+La impresión no ocurre dentro del contenedor Linux. Instala el agente en el equipo de la impresora siguiendo [app/windows_agent/README.md](app/windows_agent/README.md).
 
 El servicio `clinic_db` inicializa tablas y datos base desde:
 
@@ -146,7 +116,9 @@ CLINIC_PRODUCTS_TABLE=products
 CLINIC_FORMATS_TABLE=label_formats
 CLINIC_HISTORY_TABLE=print_history
 CLINIC_PRINTER_NAME=ZDesigner ZD230-203dpi ZPL
-CLINIC_PRINTER_CONNECTION=windows_spooler
+CLINIC_PRINT_AGENT_TOKEN=un-secreto-largo-y-aleatorio
+CLINIC_PRINT_AGENT_ID=windows-primary
+CLINIC_PRINT_AGENT_STALE_SECONDS=120
 ```
 
 La configuracion local y las credenciales se guardan en `conn/.env`, que esta excluido de Git. Usa `conn/.env.example` como referencia:
@@ -171,7 +143,7 @@ Para ejecutar Compose directamente, indica el archivo porque no se encuentra en 
 docker compose --env-file .\conn\.env up -d
 ```
 
-En Docker Compose, el backend reemplaza internamente el host local por `clinic_db` y `CLINIC_PRINTER_CONNECTION` por `simulated`, porque un contenedor Linux no puede acceder a la cola USB de Windows.
+Docker Compose reemplaza internamente el host PostgreSQL por `clinic_db`. El token del agente debe coincidir con el instalado en Windows y nunca debe confirmarse en Git.
 
 ## Sincronizacion de inventario
 

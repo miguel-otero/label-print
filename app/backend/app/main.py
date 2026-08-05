@@ -1,4 +1,5 @@
 import asyncio
+import secrets
 from contextlib import asynccontextmanager, suppress
 from typing import Literal
 
@@ -7,7 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.inventory_print import InventoryPrintError, InventoryPrintService
 from app.inventory_sync import InventorySyncRunner, InventorySyncService
-from app.printer import PrinterError, create_printer
+from app.print_queue import PrintQueueError, PrintQueueService
+from app.printer import (
+    PrinterError,
+    QueuedZplDocument,
+    build_individual_queue_documents,
+)
 from app.repository import Repository, create_repository, require_product
 from app.schemas import (
     LabelFormat,
@@ -26,6 +32,10 @@ from app.schemas import (
     PrintRequest,
     PrintResponse,
     PrinterTestResponse,
+    AgentHeartbeatRequest,
+    AgentJobResultRequest,
+    AgentPrintJob,
+    PrinterAgentStatus,
     Product,
 )
 from app.settings import get_settings
@@ -33,14 +43,15 @@ from app.zpl_preview import ZplPreviewLayout, build_zpl_preview_layout
 
 settings = get_settings()
 repository = create_repository(settings)
-printer = create_printer(settings)
-inventory_print_service = InventoryPrintService(settings, printer)
+print_queue = PrintQueueService(settings)
+inventory_print_service = InventoryPrintService(settings, print_queue)
 inventory_sync = InventorySyncService(settings)
 inventory_sync_runner = InventorySyncRunner(inventory_sync, settings)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    print_queue.ensure_schema()
     inventory_print_service.ensure_schema()
     sync_task: asyncio.Task[None] | None = None
     if settings.use_postgres and settings.external_sync_enabled:
@@ -69,6 +80,14 @@ app.add_middleware(
 
 def get_repository() -> Repository:
     return repository
+
+
+def require_agent_token(authorization: str | None = Header(default=None)) -> None:
+    if not settings.print_agent_token:
+        raise HTTPException(status_code=503, detail="CLINIC_PRINT_AGENT_TOKEN no esta configurado.")
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not secrets.compare_digest(token, settings.print_agent_token):
+        raise HTTPException(status_code=401, detail="Token de agente invalido.")
 
 
 @app.get(f"{settings.api_prefix}/health")
@@ -360,49 +379,40 @@ def print_label(
     label_format = require_label_format(repo, payload.formato)
 
     try:
-        printer.print_label(
+        documents = build_individual_queue_documents(
             label_format=label_format,
             product=product,
             quantity=payload.cantidad,
         )
     except PrinterError as exc:
-        message = str(exc)
-        history = repo.add_history(
-            product=product,
-            label_format=payload.formato,
-            quantity=payload.cantidad,
-            status="error",
-            message=message,
-            user=user,
-        )
-        return PrintResponse(ok=False, history_id=history.id, message=message)
-
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     history = repo.add_history(
-        product=product,
-        label_format=payload.formato,
-        quantity=payload.cantidad,
-        status="success",
-        message=None,
-        user=user,
+        product=product, label_format=payload.formato, quantity=payload.cantidad,
+        status="queued", message=None, user=user,
+    )
+    job_id = print_queue.enqueue(
+        kind="individual", documents=documents, requested_labels=payload.cantidad,
+        history_id=history.id,
     )
     return PrintResponse(
         ok=True,
+        job_id=job_id,
         history_id=history.id,
-        message="Etiqueta enviada a la cola de impresion",
+        message="Trabajo agregado a la cola de impresion",
     )
 
 
 @app.post(f"{settings.api_prefix}/impresora/test", response_model=PrinterTestResponse)
 def test_printer() -> PrinterTestResponse:
-    try:
-        return PrinterTestResponse.model_validate(printer.test())
-    except PrinterError as exc:
-        return PrinterTestResponse(
-            ok=False,
-            printer=settings.printer_name,
-            connection=settings.printer_connection,
-            message=str(exc),
-        )
+    job_id = print_queue.enqueue(
+        kind="printer_test",
+        documents=[QueuedZplDocument(zpl="", item_counts={})],
+        requested_labels=0,
+    )
+    return PrinterTestResponse(
+        ok=True, printer=settings.printer_name, job_id=job_id, status="queued",
+        message="Prueba de conexion agregada a la cola.",
+    )
 
 
 @app.post(f"{settings.api_prefix}/impresora/test/etiqueta", response_model=PrinterTestResponse)
@@ -410,12 +420,12 @@ def print_test_label() -> PrinterTestResponse:
     test_format = LabelFormat(
         id=0,
         name="Prueba 3 columnas",
-        code="etiquetas3",
+        code="3_etiquetas_v3",
         width_mm=100,
         height_mm=25,
         preview_type="format2",
         active=True,
-        template_file="etiquetas3.zpl",
+        template_file="3_etiquetas_v3.zpl",
     )
     test_product = Product(
         id=0,
@@ -426,21 +436,67 @@ def print_test_label() -> PrinterTestResponse:
         presentation_quantity="1 u",
     )
 
+    documents = build_individual_queue_documents(
+        label_format=test_format, product=test_product, quantity=1,
+    )
+    job_id = print_queue.enqueue(
+        kind="test_label", documents=documents, requested_labels=1,
+    )
+    return PrinterTestResponse(
+        ok=True, printer=settings.printer_name, job_id=job_id, status="queued",
+        message="Etiqueta de prueba agregada a la cola.",
+    )
+
+
+@app.get(f"{settings.api_prefix}/impresora/status", response_model=PrinterAgentStatus)
+def get_printer_status() -> PrinterAgentStatus:
+    print_queue.mark_stale_jobs()
+    return print_queue.get_agent_status()
+
+
+@app.post(
+    f"{settings.api_prefix}/agente/heartbeat",
+    response_model=PrinterAgentStatus,
+    dependencies=[Depends(require_agent_token)],
+)
+def agent_heartbeat(payload: AgentHeartbeatRequest) -> PrinterAgentStatus:
     try:
-        printer.print_label(label_format=test_format, product=test_product, quantity=1)
-        return PrinterTestResponse(
-            ok=True,
-            printer=settings.printer_name,
-            connection=settings.printer_connection,
-            message="Etiqueta de prueba enviada a la cola de impresion",
-        )
-    except PrinterError as exc:
-        return PrinterTestResponse(
-            ok=False,
-            printer=settings.printer_name,
-            connection=settings.printer_connection,
-            message=str(exc),
-        )
+        return print_queue.heartbeat(payload)
+    except PrintQueueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post(
+    f"{settings.api_prefix}/agente/trabajos/reclamar",
+    response_model=None,
+    dependencies=[Depends(require_agent_token)],
+)
+def claim_agent_job(payload: dict[str, str]) -> AgentPrintJob | Response:
+    try:
+        job = print_queue.claim(payload.get("agent_id", ""))
+    except PrintQueueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return job if job is not None else Response(status_code=204)
+
+
+@app.post(
+    f"{settings.api_prefix}/agente/trabajos/{{job_id}}/resultado",
+    dependencies=[Depends(require_agent_token)],
+)
+def complete_agent_job(job_id: int, payload: AgentJobResultRequest) -> dict[str, object]:
+    try:
+        return print_queue.complete(job_id, payload)
+    except PrintQueueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(f"{settings.api_prefix}/trabajos/{{job_id}}/reintentar")
+def retry_print_job(job_id: int) -> dict[str, object]:
+    try:
+        new_job_id = print_queue.retry(job_id)
+    except PrintQueueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"job_id": new_job_id, "status": "queued"}
 
 
 @app.get(f"{settings.api_prefix}/historial", response_model=list[PrintHistory])
