@@ -1,1 +1,1 @@
-pywin32==308
+# El agente usa ctypes para el spooler y no requiere dependencias de runtime.

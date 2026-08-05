@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+agent/__init__.py
+agent/client.py
+agent/config.py
+agent/console.py
+agent/service.py
+agent/spooler.py
+clinic_label_print_agent.egg-info/PKG-INFO
+clinic_label_print_agent.egg-info/SOURCES.txt
+clinic_label_print_agent.egg-info/dependency_links.txt
+clinic_label_print_agent.egg-info/top_level.txt
