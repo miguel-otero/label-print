@@ -2,6 +2,8 @@
 
 El agente reclama trabajos ZPL desde el backend Docker y los envía como RAW a la cola Zebra local. Producción se ejecuta como el servicio `ClinicLabelPrintAgent`; el backend nunca accede directamente al spooler.
 
+El heartbeat consulta el estado nativo de la cola antes de declarar disponible la impresora. Reporta `printer_ok=false` cuando Windows marca `WorkOffline` o informa desconexión, falta de papel, atasco, puerta abierta u otra condición que requiere intervención. La misma validación se ejecuta antes de aceptar cada documento para evitar acumular nuevos trabajos en una impresora offline.
+
 ## Requisitos
 
 - Windows con Python 3.12 disponible mediante `py -3.12`. El instalador usa esta versión para evitar incompatibilidades nativas del host de servicios.

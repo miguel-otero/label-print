@@ -27,10 +27,10 @@ export function AppLayout({ title, subtitle, actions, children }) {
   }, []);
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-background">
+      <div className="flex h-dvh w-full max-w-[100vw] overflow-hidden bg-background">
         <AppSidebar />
-        <div className="flex w-full min-w-0 max-w-full flex-1 flex-col overflow-x-hidden">
-          <header className="sticky top-0 z-30 flex h-14 w-full max-w-full items-center gap-3 border-b bg-card/80 px-4 backdrop-blur">
+        <div className="flex h-dvh w-full min-w-0 max-w-full flex-1 flex-col overflow-x-hidden overflow-y-auto">
+          <header className="sticky top-0 z-30 flex h-14 w-full max-w-full shrink-0 items-center gap-3 border-b bg-card/80 px-4 backdrop-blur">
             <SidebarTrigger />
             <div className="min-w-0 flex-1 leading-tight">
               <h1 className="truncate text-sm font-semibold text-foreground">{title}</h1>
