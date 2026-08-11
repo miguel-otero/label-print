@@ -13,7 +13,7 @@ export function PrinterCard({
   onTestLabel,
 }) {
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="text-base">Impresora configurada</CardTitle>
         <CardDescription>Cola configurada en el agente Windows.</CardDescription>

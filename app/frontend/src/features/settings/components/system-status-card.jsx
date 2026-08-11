@@ -4,7 +4,7 @@ import { StatusRow } from "./status-row";
 
 export function SystemStatusCard({ backendOk, printerName, agentStatus, lastResult }) {
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="text-base">Estado del sistema</CardTitle>
         <CardDescription>Información del backend y de la última prueba.</CardDescription>
