@@ -44,6 +44,26 @@ Recrea solamente el backend para cargar cambios en `conn/.env`.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\build-print-agent-installer.ps1
+```
+
+Compila el agente autocontenido y genera el instalador en
+`artifacts\windows-agent`. Requiere Python 3.12 e Inno Setup unicamente en el
+equipo de desarrollo.
+
+```powershell
+.\artifacts\windows-agent\ClinicLabelPrintAgent-Setup-0.2.0-x64.exe `
+  /VERYSILENT /SUPPRESSMSGBOXES /NORESTART `
+  /CONFIG="C:\ruta-segura\agent.env"
+```
+
+Instala o actualiza el agente para todos los usuarios sin utilizar el
+repositorio. Al omitir los modificadores abre el asistente grafico.
+
+El script heredado sigue disponible para diagnostico:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\install-print-agent.ps1 `
   -ServerUrl "http://localhost:8080/api" `
   -Token "TOKEN_DE_CONN_ENV" `

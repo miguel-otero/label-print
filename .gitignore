@@ -38,6 +38,8 @@ dist-ssr
 *.sln
 *.sw?
 conn/*.env
+/.build/
+/artifacts/
 
 # Agentes
 AGENTS.md

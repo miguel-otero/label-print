@@ -1,0 +1,76 @@
+name: Build Windows Print Agent
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "app/windows_agent/**"
+      - "packaging/windows-agent/**"
+      - "scripts/build-print-agent-installer.ps1"
+      - ".github/workflows/windows-agent.yml"
+  push:
+    branches:
+      - main
+    tags:
+      - "agent-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve and validate version
+        id: version
+        shell: pwsh
+        run: |
+          $content = Get-Content app/windows_agent/pyproject.toml
+          $match = $content | Select-String '^version\s*=\s*"([^"]+)"$'
+          if (-not $match) { throw "No se encontro la version del agente." }
+          $version = $match.Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq "tag") {
+            $expectedTag = "agent-v$version"
+            if ($env:GITHUB_REF_NAME -ne $expectedTag) {
+              throw "El tag $env:GITHUB_REF_NAME no coincide con $expectedTag."
+            }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Validate Python sources
+        run: python -m compileall app/backend/app app/windows_agent/agent
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          winget install --id JRSoftware.InnoSetup --version 6.7.3 -e --silent --accept-package-agreements --accept-source-agreements
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar Inno Setup." }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-print-agent-installer.ps1 -Version "${{ steps.version.outputs.version }}"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClinicLabelPrintAgent-${{ steps.version.outputs.version }}
+          path: artifacts/windows-agent/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/agent-v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$env:GITHUB_REF_NAME" artifacts/windows-agent/* --generate-notes --verify-tag

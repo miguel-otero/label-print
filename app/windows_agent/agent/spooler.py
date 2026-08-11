@@ -115,6 +115,10 @@ class WindowsSpooler:
         finally:
             winspool.ClosePrinter(handle)
 
+    def check_exists(self) -> None:
+        handle = self._open()
+        winspool.ClosePrinter(handle)
+
     def send(self, zpl: str) -> None:
         payload = zpl.encode("utf-8")
         handle = self._open()

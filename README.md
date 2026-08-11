@@ -245,6 +245,13 @@ El backend parsea la plantilla ZPL y expone:
 
 La vista previa renderiza esos elementos en SVG para mantener proporciones cercanas al resultado impreso.
 
+## Agente de impresion para Windows
+
+El agente se distribuye como un instalador autocontenido. No requiere Python ni
+una copia del repositorio en el equipo de impresion. Consulte
+`app/windows_agent/README.md` para preparar `agent.env`, instalar, actualizar
+y publicar nuevas versiones.
+
 ## Verificaciones utiles
 
 Compilar backend:

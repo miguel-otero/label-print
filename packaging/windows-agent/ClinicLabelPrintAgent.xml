@@ -1,0 +1,11 @@
+<service>
+  <id>ClinicLabelPrintAgent</id>
+  <name>Clinic Label Print Agent</name>
+  <description>Recibe trabajos ZPL del servidor y los envia a la cola Zebra local.</description>
+  <executable>%BASE%\agent\ClinicLabelPrintAgent.exe</executable>
+  <workingdirectory>%BASE%\agent</workingdirectory>
+  <startmode>Automatic</startmode>
+  <onfailure action="restart" delay="10 sec" />
+  <logpath>%ProgramData%\ClinicLabelPrint\logs</logpath>
+  <log mode="roll" />
+</service>
