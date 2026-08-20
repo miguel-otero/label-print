@@ -42,4 +42,4 @@ conn/*.env
 /artifacts/
 
 # Agentes
-AGENTS.md
+#AGENTS.md
