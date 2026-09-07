@@ -11,6 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/shared/ui/sidebar";
+import { config } from "@/config";
 
 const nav = [
   { title: "Imprimir etiquetas", url: "/", icon: Printer },
@@ -30,7 +31,7 @@ export function AppSidebar() {
             <Printer className="size-5 transition-[width,height] group-data-[collapsible=icon]:size-4" />
           </div>
           <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="text-sm font-semibold">StockLabel</span>
+            <span className="text-sm font-semibold">{config.name}</span>
             <span className="text-xs text-muted-foreground">
               Software para impresión de etiquetas
             </span>
