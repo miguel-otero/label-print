@@ -5,7 +5,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+. (Join-Path $PSScriptRoot "windows-agent-common.ps1")
+Assert-WindowsAgentPlatform
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $agentRoot = Join-Path $repoRoot "app\windows_agent"
 $packagingRoot = Join-Path $repoRoot "packaging\windows-agent"
 $buildRoot = Join-Path $repoRoot ".build\windows-agent"
@@ -77,7 +79,16 @@ VSVersionInfo(
 "@
 Set-Content -LiteralPath $versionFile -Value $versionInfo -Encoding UTF8
 
-Remove-Item -LiteralPath $payloadRoot, $distRoot, $workRoot -Recurse -Force -ErrorAction SilentlyContinue
+foreach ($target in @($payloadRoot, $distRoot, $workRoot)) {
+    $resolvedTarget = [IO.Path]::GetFullPath($target)
+    $expectedParent = [IO.Path]::GetFullPath($buildRoot).TrimEnd('\') + '\'
+    if (-not $resolvedTarget.StartsWith($expectedParent, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Build cleanup target is outside .build/windows-agent: $resolvedTarget"
+    }
+    if (Test-Path -LiteralPath $resolvedTarget) {
+        Remove-Item -LiteralPath $resolvedTarget -Recurse -Force
+    }
+}
 $env:CLINIC_AGENT_VERSION_FILE = $versionFile
 try {
     & $python -m PyInstaller --noconfirm --clean --distpath $distRoot --workpath $workRoot (Join-Path $packagingRoot "agent.spec")

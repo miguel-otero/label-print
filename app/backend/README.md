@@ -7,7 +7,7 @@ El backend corre exclusivamente en `clinic_backend`. Gestiona productos, inventa
 Desde la raíz:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Mode Docker -Build
+powershell -ExecutionPolicy Bypass -File .\scripts\powershell\start.ps1 -Mode Docker -Build
 ```
 
 La API queda en `http://localhost:8080/api` y su salud se consulta en `/api/health`. Compose carga `conn/.env` y fuerza `CLINIC_DATABASE_HOST=clinic_db` dentro del contenedor.

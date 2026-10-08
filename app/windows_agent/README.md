@@ -51,7 +51,7 @@ Python 3.12 e Inno Setup 6:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\build-print-agent-installer.ps1
+  -File .\scripts\powershell\build-print-agent-installer.ps1
 ```
 
 El resultado queda en `artifacts\windows-agent`. Los pull requests que
@@ -67,11 +67,24 @@ Los scripts anteriores se conservan temporalmente para diagnostico y migracion:
 ```powershell
 Get-Service ClinicLabelPrintAgent
 Get-Content "$env:ProgramData\ClinicLabelPrint\logs\ClinicLabelPrintAgent.err.log" -Tail 100
-.\scripts\run-print-agent.ps1
-.\scripts\uninstall-print-agent.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\run-print-agent.ps1 -StopService
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\uninstall-print-agent.ps1
 ```
 
-Detenga el servicio antes de usar el modo consola para evitar dos consumidores
-simultaneos. El instalador detecta la instalacion heredada en `ProgramData`,
+El diagnostico detecta tanto el ejecutable instalado (incluso en una ruta
+personalizada) como el entorno Python heredado. Sin `-StopService` rechaza el
+arranque si el servicio esta activo; con ese modificador requiere administrador
+y lo detiene. Al terminar, reinicielo con `Start-Service ClinicLabelPrintAgent`.
+La desinstalacion usa el desinstalador de Inno Setup para retirar tambien el
+programa instalado; en instalaciones heredadas retira solo el servicio y conserva
+sus binarios. En ambos casos se conservan configuracion y logs.
+
+Desde WSL se pueden invocar las contrapartes `scripts/linux/*.sh`, con los mismos
+parametros PowerShell, por ejemplo `bash scripts/linux/run-print-agent.sh -StopService`.
+Se necesita interoperabilidad Windows y elevacion para administrar el servicio.
+Ubuntu nativo no puede acceder al spooler Windows ni compilar este instalador;
+utilice un equipo Windows o el workflow de GitHub Actions.
+
+El instalador detecta la instalacion heredada en `ProgramData`,
 conserva `agent.env` y los logs, reemplaza el servicio y elimina el entorno
 virtual despues de iniciar correctamente la nueva version.

@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Bootstrap (jq)
-        run: sh scripts/startup.sh -t jq
+        run: bash scripts/linux/startup.sh -t jq
 
       - name: Create conn/ files from secrets
         shell: bash
@@ -79,9 +79,6 @@ jobs:
           name: conn
           path: conn
 
-      - name: Bootstrap (gcloud)
-        run: sh scripts/startup.sh -t gcloud
-
       - name: Auth to Google Cloud (OIDC)
         uses: google-github-actions/auth@v2
         with:
@@ -92,5 +89,8 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Bootstrap (zip)
+        run: bash scripts/linux/startup.sh -t zip
+
       - name: Update zip for prod
-        run: sh scripts/update_zip.sh
+        run: bash scripts/linux/update_zip.sh

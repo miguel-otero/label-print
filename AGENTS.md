@@ -13,8 +13,8 @@
 
 Run commands from the repository root unless noted otherwise:
 
-- `powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1` runs frontend, backend, and PostgreSQL in Docker.
-- `scripts\install-print-agent.ps1` installs the Windows print agent as a service; use `run-print-agent.ps1` for foreground diagnostics.
+- `powershell -ExecutionPolicy Bypass -File .\scripts\powershell\start.ps1` or `bash scripts/linux/start.sh` runs frontend, backend, and PostgreSQL in Docker.
+- `scripts/powershell/` manages the Windows print agent; `run-print-agent.ps1` diagnoses either installer or legacy installations. Linux agent wrappers require WSL; native Ubuntu only hosts Docker.
 - `docker compose --env-file .\conn\.env config` validates Compose interpolation.
 - `python -m compileall app\backend\app` checks backend syntax.
 - In `app/frontend`, `npm run build` creates a production build and `npm run lint` runs ESLint/Prettier checks.

@@ -25,19 +25,19 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ## Aplicación Docker
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\start.ps1
 ```
 
 Levanta frontend, backend y PostgreSQL en segundo plano usando `conn/.env`.
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Build
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\start.ps1 -Build
 ```
 
 Reconstruye las imágenes y levanta todos los contenedores.
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Logs
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\start.ps1 -Logs
 ```
 
 Levanta la aplicación y mantiene visibles los logs de Compose.
@@ -60,7 +60,7 @@ Recrea solamente el backend para cargar cambios en `conn/.env`.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\build-print-agent-installer.ps1
+  -File .\scripts\powershell\build-print-agent-installer.ps1
 ```
 
 Compila el agente autocontenido y genera el instalador en
@@ -80,7 +80,7 @@ El script heredado sigue disponible para diagnostico:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\install-print-agent.ps1 `
+  -File .\scripts\powershell\install-print-agent.ps1 `
   -ServerUrl "http://localhost:8080/api" `
   -Token "TOKEN_DE_CONN_ENV" `
   -PrinterName "ZDesigner ZD230-203dpi ZPL"
@@ -104,16 +104,65 @@ Sigue los logs del wrapper y los errores del proceso del agente.
 
 ```powershell
 Stop-Service ClinicLabelPrintAgent
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-print-agent.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\run-print-agent.ps1
 ```
 
-Detiene temporalmente el servicio y ejecuta el agente en primer plano para diagnóstico. Evitar dos agentes simultáneos.
+Detiene temporalmente el servicio y ejecuta el agente en primer plano para diagnóstico.
+Detecta el ejecutable nuevo y el entorno heredado. Tambien puede usar
+`run-print-agent.ps1 -StopService` como administrador; sin ese modificador rechaza
+el arranque si el servicio esta activo. Al terminar: `Start-Service ClinicLabelPrintAgent`.
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall-print-agent.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\uninstall-print-agent.ps1
 ```
 
-Desinstala el servicio; conserva configuración, entorno y logs en `C:\ProgramData\ClinicLabelPrint`.
+En instalaciones `.exe`, ejecuta el desinstalador y retira el programa y el
+servicio. En instalaciones heredadas elimina solo el servicio. Conserva
+configuracion y logs en `C:\ProgramData\ClinicLabelPrint`.
+
+## Preparacion Ubuntu y distribucion ZIP
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\startup.ps1 -Tools docker
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\update_zip.ps1 -NoUpload
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\update_zip.ps1
+```
+
+El primero prepara **Ubuntu/Debian en WSL**, no Windows/Docker Desktop. Los
+siguientes generan `artifacts/deploy/deploy.zip`; con `-NoUpload` solo empaquetan,
+sin el modificador suben a GCS mediante `gsutil` autenticado. `conn/` se incluye
+deliberadamente, junto con logos y archivos de empaquetado del agente.
+
+## Equivalentes Bash en Ubuntu/Debian
+
+```bash
+bash scripts/linux/startup.sh -t docker -t zip -t jq
+bash scripts/linux/start.sh --build
+bash scripts/linux/start.sh --logs
+bash scripts/linux/update_zip.sh --no-upload
+bash scripts/linux/update_zip.sh
+```
+
+Preparan herramientas (solicitan `sudo`), levantan Docker, siguen logs, generan el
+ZIP o lo suben. Para subirlo, instale tambien Google Cloud CLI con
+`bash scripts/linux/startup.sh -t gcloud` y autentiquese con la cuenta autorizada.
+En PowerShell 7 sobre Ubuntu los equivalentes generales pueden ejecutarse con
+`pwsh -NoProfile -File ./scripts/powershell/start.ps1 -Build` o
+`pwsh -NoProfile -File ./scripts/powershell/update_zip.ps1 -NoUpload`.
+
+Las tareas del agente Windows requieren **WSL con interoperabilidad Windows**,
+no Ubuntu nativo. Las contrapartes aceptan los mismos parametros PowerShell:
+
+```bash
+bash scripts/linux/build-print-agent-installer.sh -Version 0.2.0
+bash scripts/linux/install-print-agent.sh -ServerUrl 'http://localhost:8080/api' -Token 'TOKEN' -PrinterName 'ZDesigner ZD230-203dpi ZPL'
+bash scripts/linux/run-print-agent.sh -StopService
+bash scripts/linux/uninstall-print-agent.sh
+```
+
+Abra la terminal como administrador para instalar, desinstalar o detener el
+servicio. Compilar requiere Python 3.12 e Inno Setup **en Windows**. El agente
+no se instala en la VM Ubuntu; ahi solo se ejecutan los contenedores.
 
 ## Estado y conectividad
 

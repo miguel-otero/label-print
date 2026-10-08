@@ -8,7 +8,7 @@ La aplicación usa tres contenedores y un agente de impresión Windows:
 - Backend: FastAPI.
 - Base de datos: PostgreSQL.
 
-- `scripts/start.ps1` levanta frontend, backend y PostgreSQL en Docker.
+- `scripts/powershell/start.ps1` (PowerShell) o `scripts/linux/start.sh` (Ubuntu) levanta frontend, backend y PostgreSQL en Docker.
 - `ClinicLabelPrintAgent` corre en el equipo Windows conectado a la Zebra y consume una cola persistente del backend.
 
 ## Arquitectura objetivo
@@ -62,22 +62,33 @@ El historial guarda un registro principal por lote y detalles por articulo. La p
 Desde la raiz del repositorio:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\powershell\start.ps1
 ```
 
 El parámetro heredado `-Mode Docker` continúa siendo válido. Para reconstruir imágenes:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Build
+powershell -ExecutionPolicy Bypass -File .\scripts\powershell\start.ps1 -Build
 ```
 
 Ver logs:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Mode Docker -Logs
+powershell -ExecutionPolicy Bypass -File .\scripts\powershell\start.ps1 -Mode Docker -Logs
 ```
 
+En Ubuntu/Debian:
+
+```bash
+bash scripts/linux/startup.sh -t docker
+bash scripts/linux/start.sh --build
+bash scripts/linux/start.sh --logs
+```
+
+El preparador instala Docker Engine, Compose y Buildx, pero no cambia los permisos
+del usuario sobre el daemon. Use `sudo` si el administrador no ha concedido acceso.
 La impresión no ocurre dentro del contenedor Linux. Instala el agente en el equipo de la impresora siguiendo [app/windows_agent/README.md](app/windows_agent/README.md).
+Consulte [scripts por plataforma y restricciones](scripts/README.md).
 
 El servicio `clinic_db` inicializa tablas y datos base desde:
 
@@ -302,4 +313,10 @@ app/
 conn/
 docker/
 scripts/
+  powershell/
+  linux/
+  tests/
+  deploy-files.txt
+packaging/windows-agent/
+storage/label-images/
 ```

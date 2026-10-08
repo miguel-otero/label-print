@@ -6,7 +6,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+. (Join-Path $PSScriptRoot "windows-agent-common.ps1")
+Assert-WindowsAgentPlatform
+Assert-WindowsAgentAdministrator
+$installed = Get-WindowsAgentInstallation
+if ($installed.Kind -eq "Installer") {
+    throw "El agente autocontenido ya esta instalado. Actualicelo con el instalador .exe; este script es solo para instalaciones heredadas."
+}
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $source = Join-Path $repoRoot "app\windows_agent"
 $installRoot = Join-Path $env:ProgramData "ClinicLabelPrint"
 $venv = Join-Path $installRoot "venv"
@@ -15,12 +22,6 @@ $serviceName = "ClinicLabelPrintAgent"
 $wrapper = Join-Path $installRoot "$serviceName.exe"
 $wrapperConfig = Join-Path $installRoot "$serviceName.xml"
 $logsPath = Join-Path $installRoot "logs"
-
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = [Security.Principal.WindowsPrincipal]::new($identity)
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw "Ejecute este script desde PowerShell como administrador."
-}
 
 if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
     Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
@@ -37,6 +38,7 @@ if (-not (Test-Path $python)) {
     if ($LASTEXITCODE -ne 0) { throw "Python 3.12 es requerido." }
 }
 & $python -m pip install --upgrade pip
+if ($LASTEXITCODE -ne 0) { throw "No se pudo actualizar pip." }
 & $python -m pip install $source
 if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar el agente." }
 
@@ -74,11 +76,13 @@ $xml = @"
 Set-Content -LiteralPath $wrapperConfig -Value $xml -Encoding UTF8
 
 icacls $configPath /inheritance:r /grant:r "*S-1-5-18:F" "*S-1-5-32-544:F" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "No se pudieron proteger los permisos de agent.env." }
 & $wrapper install | Out-Host
 if ($LASTEXITCODE -ne 0 -or -not (Get-Service $serviceName -ErrorAction SilentlyContinue)) {
     throw "WinSW no pudo registrar el servicio."
 }
 & $wrapper start | Out-Host
+if ($LASTEXITCODE -ne 0) { throw "WinSW no pudo iniciar el servicio. Revise $logsPath." }
 Start-Sleep -Seconds 2
 $service = Get-Service $serviceName
 if ($service.Status -ne "Running") { throw "El servicio fue registrado pero no permanece en ejecucion. Revise $logsPath." }

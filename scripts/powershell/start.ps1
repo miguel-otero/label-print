@@ -6,8 +6,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$envFile = Join-Path $repoRoot "conn\.env"
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
+$envFile = Join-Path $repoRoot "conn/.env"
 Set-Location $repoRoot
 
 if (-not (Test-Path $envFile)) {
@@ -27,6 +27,11 @@ $ErrorActionPreference = $previousPreference
 if ($dockerExitCode -ne 0) {
     throw "Docker is not running or this terminal cannot access it."
 }
+$ErrorActionPreference = "Continue"
+docker compose version *> $null
+$composeExitCode = $LASTEXITCODE
+$ErrorActionPreference = $previousPreference
+if ($composeExitCode -ne 0) { throw "Docker Compose plugin is required (docker compose)." }
 
 $arguments = @("compose", "--env-file", $envFile, "up", "-d")
 if ($Build) {
@@ -38,6 +43,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 docker compose --env-file $envFile ps
+if ($LASTEXITCODE -ne 0) { throw "Docker Compose could not read the application status." }
 Write-Host ""
 Write-Host "Frontend: http://localhost:8083"
 Write-Host "Backend:  http://localhost:8080/api"
