@@ -14,12 +14,16 @@ export function IndividualTable({ items, loading, onSelect }) {
     },
     {
       key: "product",
-      header: "Producto",
+      header: "Producto / Imagen",
       headClassName: "text-center",
       render: (item) => (
         <>
-          <div className="font-mono text-xs">{item.product_code}</div>
-          <div className="text-xs text-muted-foreground">{item.product_description}</div>
+          <div className="font-mono text-xs">
+            {item.kind === "custom_label" ? "Etiqueta personalizada" : item.product_code}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {item.image_name ?? item.product_description}
+          </div>
         </>
       ),
     },
@@ -28,7 +32,7 @@ export function IndividualTable({ items, loading, onSelect }) {
       header: "Formato",
       headClassName: "w-24 text-center",
       cellClassName: "text-center font-mono text-xs",
-      render: (item) => item.format,
+      render: (item) => (item.kind === "custom_label" ? "Imagen · 3 columnas" : item.format),
     },
     {
       key: "quantity",

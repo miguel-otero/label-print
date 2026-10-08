@@ -1,5 +1,21 @@
 # Comandos del proyecto
 
+## Etiquetas personalizadas
+
+```powershell
+docker compose --env-file .\conn\.env up -d --build --no-deps clinic_backend
+```
+
+Reconstruye el backend con soporte PNG/JPG, migra el historial y monta
+`storage/label-images/` para conservar las imágenes cargadas desde la aplicación.
+
+```powershell
+docker compose --env-file .\conn\.env run --rm --no-deps -e CUSTOM_LABEL_DATABASE_TESTS=1 clinic_backend sh -c "pip install -r requirements-test.txt && python -m unittest discover -s tests -v"
+```
+
+Ejecuta las pruebas de conversión y cola en un esquema de prueba aislado, sin
+enviar trabajos al agente Windows ni a la impresora.
+
 Ejecutar desde `G:\projects\label-print` en PowerShell. Los comandos que administran el agente deben abrirse **como administrador**. Para habilitar scripts únicamente en la terminal actual:
 
 ```powershell

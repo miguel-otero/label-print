@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,6 +14,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
     data_source: str = "mock"
+    label_images_dir: str = str((Path(__file__).resolve().parents[1] / "../../storage/label-images").resolve())
 
     database_host: str = "localhost"
     database_port: int = 5432

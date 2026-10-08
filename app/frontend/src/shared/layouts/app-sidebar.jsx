@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Boxes, ClipboardList, Printer, Settings, History } from "lucide-react";
+import { Boxes, ClipboardList, Image, Printer, Settings, History } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -17,6 +17,7 @@ const nav = [
   { title: "Imprimir etiquetas", url: "/", icon: Printer },
   { title: "Imprimir de inventario", url: "/inventory-print", icon: Boxes },
   { title: "Imprimir por entrada", url: "/inventory-entry-print", icon: ClipboardList },
+  { title: "Etiqueta personalizada", url: "/custom-label", icon: Image },
   { title: "Configuraciones", url: "/settings", icon: Settings },
   { title: "Historial de impresión", url: "/history", icon: History },
 ];

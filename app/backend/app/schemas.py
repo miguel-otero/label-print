@@ -73,6 +73,22 @@ class PrintHistory(BaseModel):
     quantity: int
     status: Literal["queued", "processing", "success", "partial", "error", "unknown"]
     message: str | None = None
+    kind: Literal["individual", "custom_label"] = "individual"
+    image_id: int | None = None
+    image_name: str | None = None
+
+
+class LabelImage(BaseModel):
+    id: int
+    name: str
+    width: int
+    height: int
+    created_at: datetime
+
+
+class CustomLabelPrintRequest(BaseModel):
+    imagen_id: int = Field(gt=0, strict=True)
+    cantidad: int = Field(ge=1, le=400, strict=True)
 
 
 class InventorySyncResult(BaseModel):

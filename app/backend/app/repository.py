@@ -441,7 +441,8 @@ class PostgresRepository:
                     """
                     select history.id, history.timestamp, history."user", history.product_code,
                            history.product_description, history.format, history.quantity,
-                           history.status, history.message,
+                           history.status, history.message, history.kind,
+                           history.image_id, history.image_name,
                            (select max(jobs.id) from print_jobs jobs
                             where jobs.history_id = history.id) as job_id
                     from {table} history

@@ -40,6 +40,8 @@ dist-ssr
 conn/*.env
 /.build/
 /artifacts/
+/storage/label-images/*
+!/storage/label-images/.gitkeep
 
 # Agentes
 #AGENTS.md

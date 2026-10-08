@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 from datetime import datetime, timezone
 
 import psycopg
@@ -101,10 +102,11 @@ class PrintQueueService:
         requested_labels: int,
         history_id: int | None = None,
         batch_id: int | None = None,
+        connection: psycopg.Connection | None = None,
     ) -> int:
         if not documents:
             raise PrintQueueError("El trabajo no contiene documentos para imprimir.")
-        with self._connect() as conn:
+        with (nullcontext(connection) if connection is not None else self._connect()) as conn:
             with conn.transaction():
                 job = conn.execute(
                     """

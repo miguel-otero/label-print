@@ -5,6 +5,10 @@ from typing import Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.custom_label_routes import create_custom_label_router
+from app.custom_labels import CustomLabelError, CustomLabelService
 
 from app.inventory_print import InventoryPrintError, InventoryPrintService
 from app.inventory_sync import InventorySyncRunner, InventorySyncService
@@ -44,6 +48,7 @@ from app.zpl_preview import ZplPreviewLayout, build_zpl_preview_layout
 settings = get_settings()
 repository = create_repository(settings)
 print_queue = PrintQueueService(settings)
+custom_labels = CustomLabelService(settings, print_queue)
 inventory_print_service = InventoryPrintService(settings, print_queue)
 inventory_sync = InventorySyncService(settings)
 inventory_sync_runner = InventorySyncRunner(inventory_sync, settings)
@@ -52,6 +57,7 @@ inventory_sync_runner = InventorySyncRunner(inventory_sync, settings)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     print_queue.ensure_schema()
+    custom_labels.ensure_schema()
     inventory_print_service.ensure_schema()
     sync_task: asyncio.Task[None] | None = None
     if settings.use_postgres and settings.external_sync_enabled:
@@ -67,6 +73,13 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Clinic Label Print API", version="0.1.0", lifespan=lifespan)
+app.include_router(create_custom_label_router(custom_labels), prefix=settings.api_prefix)
+
+
+@app.exception_handler(CustomLabelError)
+async def custom_label_error_handler(_, exc: CustomLabelError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,13 +1,14 @@
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api";
 
-async function apiRequest(path, init) {
+async function apiRequest(path, init, responseType = "json") {
   const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...(init?.headers ?? {}),
     },
-    ...init,
   });
+  if (res.ok && responseType === "blob") return res.blob();
   let body;
   try {
     body = await res.json();
@@ -17,7 +18,9 @@ async function apiRequest(path, init) {
   if (!res.ok) {
     let message = `Error HTTP ${res.status}`;
     if (isApiObject(body)) {
-      message = String(body.detail ?? body.message ?? message);
+      message = Array.isArray(body.detail)
+        ? body.detail.map((item) => item.msg).join("; ")
+        : String(body.detail ?? body.message ?? message);
     }
     throw new Error(message);
   }
@@ -25,6 +28,32 @@ async function apiRequest(path, init) {
     throw new Error(String(body.message ?? "La operacion no fue exitosa"));
   }
   return body;
+}
+
+export function getLabelImages() {
+  return apiRequest("/etiqueta-personalizada/imagenes");
+}
+
+export function uploadLabelImage(file, name) {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("name", name);
+  return apiRequest("/etiqueta-personalizada/imagenes", { method: "POST", body });
+}
+
+export function labelImageUrl(id) {
+  return `${API_BASE}/etiqueta-personalizada/imagenes/${id}/contenido`;
+}
+
+export function getLabelImagePreview(id, signal) {
+  return apiRequest(`/etiqueta-personalizada/imagenes/${id}/preview`, { signal }, "blob");
+}
+
+export function printCustomLabel(imageId, quantity) {
+  return apiRequest("/etiqueta-personalizada/imprimir", {
+    method: "POST",
+    body: JSON.stringify({ imagen_id: imageId, cantidad: quantity }),
+  });
 }
 
 function isApiObject(value) {

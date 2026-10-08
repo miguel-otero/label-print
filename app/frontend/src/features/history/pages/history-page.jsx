@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/shared/layouts/app-layout";
@@ -13,9 +14,12 @@ import { DetailRow } from "@/features/history/components/detail-row";
 import { getBatchHistory, getHistory, retryPrintJob } from "@/shared/api/api";
 
 export function HistoryPage() {
+  const [searchParams] = useSearchParams();
   const [individual, setIndividual] = useState([]);
   const [batches, setBatches] = useState([]);
-  const [view, setView] = useState("batches");
+  const [view, setView] = useState(
+    searchParams.get("view") === "individual" ? "individual" : "batches",
+  );
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [date, setDate] = useState("");
@@ -24,7 +28,11 @@ export function HistoryPage() {
   const [retryingJobId, setRetryingJobId] = useState(null);
 
   async function handleRetry(item) {
-    if (!item.job_id || !window.confirm("¿Desea volver a enviar este trabajo a la cola de impresión?")) return;
+    if (
+      !item.job_id ||
+      !window.confirm("¿Desea volver a enviar este trabajo a la cola de impresión?")
+    )
+      return;
     setRetryingJobId(item.job_id);
     try {
       const result = await retryPrintJob(item.job_id);
@@ -79,6 +87,7 @@ export function HistoryPage() {
         !normalized ||
         item.product_code.toLowerCase().includes(normalized) ||
         item.product_description.toLowerCase().includes(normalized) ||
+        (item.kind === "custom_label" && "etiqueta personalizada".includes(normalized)) ||
         item.format.toLowerCase().includes(normalized);
       return matchesQuery && (!date || item.timestamp.startsWith(date));
     });
@@ -182,8 +191,15 @@ export function HistoryPage() {
                   <DetailRow label="Mensaje" value={selectedBatch.message} />
                 )}
                 {["error", "unknown"].includes(selectedBatch.status) && selectedBatch.job_id && (
-                  <Button type="button" variant="destructive" disabled={retryingJobId === selectedBatch.job_id} onClick={() => handleRetry(selectedBatch)}>
-                    {retryingJobId === selectedBatch.job_id ? "Reintentando..." : "Reintentar impresión"}
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={retryingJobId === selectedBatch.job_id}
+                    onClick={() => handleRetry(selectedBatch)}
+                  >
+                    {retryingJobId === selectedBatch.job_id
+                      ? "Reintentando..."
+                      : "Reintentar impresión"}
                   </Button>
                 )}
                 <div className="pt-2">
@@ -231,10 +247,21 @@ export function HistoryPage() {
               <div className="mt-6 space-y-3 text-sm">
                 <DetailRow label="Usuario" value={selectedIndividual.user} />
                 <DetailRow
-                  label="Producto"
-                  value={`${selectedIndividual.product_code} - ${selectedIndividual.product_description}`}
+                  label={selectedIndividual.kind === "custom_label" ? "Imagen" : "Producto"}
+                  value={
+                    selectedIndividual.kind === "custom_label"
+                      ? selectedIndividual.image_name
+                      : `${selectedIndividual.product_code} - ${selectedIndividual.product_description}`
+                  }
                 />
-                <DetailRow label="Formato" value={selectedIndividual.format} />
+                <DetailRow
+                  label="Formato"
+                  value={
+                    selectedIndividual.kind === "custom_label"
+                      ? "Etiqueta personalizada · 3 columnas"
+                      : selectedIndividual.format
+                  }
+                />
                 <DetailRow label="Cantidad" value={String(selectedIndividual.quantity)} />
                 <DetailRow
                   label="Estado"
@@ -243,11 +270,19 @@ export function HistoryPage() {
                 {selectedIndividual.message && (
                   <DetailRow label="Mensaje" value={selectedIndividual.message} />
                 )}
-                {["error", "unknown"].includes(selectedIndividual.status) && selectedIndividual.job_id && (
-                  <Button type="button" variant="destructive" disabled={retryingJobId === selectedIndividual.job_id} onClick={() => handleRetry(selectedIndividual)}>
-                    {retryingJobId === selectedIndividual.job_id ? "Reintentando..." : "Reintentar impresión"}
-                  </Button>
-                )}
+                {["error", "unknown"].includes(selectedIndividual.status) &&
+                  selectedIndividual.job_id && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={retryingJobId === selectedIndividual.job_id}
+                      onClick={() => handleRetry(selectedIndividual)}
+                    >
+                      {retryingJobId === selectedIndividual.job_id
+                        ? "Reintentando..."
+                        : "Reintentar impresión"}
+                    </Button>
+                  )}
               </div>
             </>
           )}

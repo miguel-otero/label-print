@@ -245,6 +245,15 @@ El backend parsea la plantilla ZPL y expone:
 
 La vista previa renderiza esos elementos en SVG para mantener proporciones cercanas al resultado impreso.
 
+## Etiqueta personalizada
+
+La opción **Etiqueta personalizada** permite cargar logos PNG/JPG, reutilizarlos
+y repetir exclusivamente la imagen en las etiquetas del rollo de tres columnas.
+Incluye vista previa monocromática e historial con reintento manual. Las imágenes
+se conservan en `storage/label-images/`, montado en el backend Docker.
+
+Consulte [uso, API, respaldo y validación](docs/custom-labels.md).
+
 ## Agente de impresion para Windows
 
 El agente se distribuye como un instalador autocontenido. No requiere Python ni
