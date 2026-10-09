@@ -76,6 +76,7 @@ class PrintHistory(BaseModel):
     kind: Literal["individual", "custom_label"] = "individual"
     image_id: int | None = None
     image_name: str | None = None
+    prints_barcode: bool | None = None
 
 
 class LabelImage(BaseModel):
@@ -175,6 +176,7 @@ class InventoryBatchItemResult(BaseModel):
     reference: str
     description: str
     barcode: str
+    prints_barcode: bool | None = None
     presentation: str
     inventory_quantity: Decimal
     requested_labels: int

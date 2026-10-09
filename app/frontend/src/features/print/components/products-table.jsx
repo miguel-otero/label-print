@@ -1,4 +1,4 @@
-import { cn } from "@/shared/utils/utils";
+import { barcodeModeLabel, cn } from "@/shared/utils/utils";
 import { TableRender } from "@/shared/layouts/table-render";
 
 const headClassName =
@@ -39,7 +39,14 @@ export function ProductsTable({ products, loading, selected, onSelect }) {
       header: "Código de barras",
       headClassName: cn(headClassName, "w-[16%]"),
       cellClassName: "break-words px-1.5 text-center font-mono text-xs text-foreground",
-      render: (product) => product.barcode,
+      render: (product) => (
+        <>
+          <div>{product.barcode}</div>
+          <div className="font-sans text-xs text-muted-foreground">
+            {barcodeModeLabel(product.own_code !== false)}
+          </div>
+        </>
+      ),
     },
     {
       key: "barcode_unit",

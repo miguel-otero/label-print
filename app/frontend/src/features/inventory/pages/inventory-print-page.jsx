@@ -13,6 +13,7 @@ import { InventoryPagination } from "@/features/inventory/components/inventory-p
 import { BatchSelectionTable } from "@/features/inventory/components/batch-selection-table";
 import { PrepareBatchDialog } from "@/features/inventory/components/prepare-batch-dialog";
 import { LineFilter } from "@/features/print/components/line-filter";
+import { batchPreviewProducts } from "@/shared/utils/utils";
 import {
   getFormats,
   getInventoryPrintSettings,
@@ -28,7 +29,7 @@ const PAGE_SIZE = 100;
 const BULK_SELECTION_PAGE_SIZE = 10000;
 
 function automaticQuantity(inventory, product) {
-  const quantityPerUnit = Number(product.quantity_per_unit);
+  const quantityPerUnit = Number(String(product.quantity_per_unit ?? "").replace(",", "."));
   if (!Number.isFinite(quantityPerUnit) || quantityPerUnit <= 0) return 0;
   return Math.floor(Math.ceil(Number(inventory)) / quantityPerUnit);
 }
@@ -125,8 +126,8 @@ export function InventoryPrintPage() {
   const selectedItems = useMemo(() => Array.from(selected.values()), [selected]);
   const totalLabels = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
   const selectedFormat = formats.find((format) => String(format.id) === formatId) ?? null;
-  const previewItem = selectedItems[0] ?? null;
-  const previewProduct = previewItem?.product ?? previewItem?.inventory.presentations[0] ?? null;
+  const previewProducts = batchPreviewProducts(selectedItems);
+  const previewProduct = previewProducts[0] ?? null;
   const printableItems = selectedItems.filter((item) => item.product && item.quantity > 0);
   const unresolved = selectedItems.some((item) => item.quantity > 0 && !item.product);
   const overLimit = totalLabels > maxLabels;
@@ -135,7 +136,8 @@ export function InventoryPrintPage() {
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
   const visiblePrintableItems = items.filter((item) => item.printable);
   const allFilteredSelected =
-    visiblePrintableItems.length > 0 && visiblePrintableItems.every((item) => selected.has(item.id));
+    visiblePrintableItems.length > 0 &&
+    visiblePrintableItems.every((item) => selected.has(item.id));
   const someFilteredSelected = visiblePrintableItems.some((item) => selected.has(item.id));
   const selectedLineCount = selectedLines.length;
   const lineFilterLabel =
@@ -491,7 +493,8 @@ export function InventoryPrintPage() {
             onFormatChange={setFormatId}
             product={previewProduct}
             quantity={totalLabels}
-            previewQuantity={Math.max(1, previewItem?.quantity ?? 1)}
+            previewProducts={previewProducts}
+            previewQuantity={totalLabels}
             quantityLabel="Etiquetas del lote"
             quantityHelp={`Límite configurado: ${maxLabels}. Las cantidades se ajustan antes de imprimir.`}
             description={

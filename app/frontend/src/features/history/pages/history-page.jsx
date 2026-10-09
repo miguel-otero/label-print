@@ -11,6 +11,7 @@ import { BatchTable } from "@/features/history/components/batch-table";
 import { IndividualTable } from "@/features/history/components/individual-table";
 import { StatusBadge } from "@/features/history/components/status-badge";
 import { DetailRow } from "@/features/history/components/detail-row";
+import { barcodeModeLabel, formatPresentationQuantity } from "@/shared/utils/utils";
 import { getBatchHistory, getHistory, retryPrintJob } from "@/shared/api/api";
 
 export function HistoryPage() {
@@ -215,8 +216,11 @@ export function HistoryPage() {
                           <StatusBadge status={item.status} />
                         </div>
                         <div className="text-xs">
-                          {item.presentation} · {item.printed_labels}/{item.requested_labels}{" "}
-                          impresas
+                          {formatPresentationQuantity(item.presentation)} · {item.printed_labels}/
+                          {item.requested_labels} impresas
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {barcodeModeLabel(item.prints_barcode)}
                         </div>
                         {item.message && (
                           <div className="text-xs text-destructive">{item.message}</div>
@@ -263,6 +267,12 @@ export function HistoryPage() {
                   }
                 />
                 <DetailRow label="Cantidad" value={String(selectedIndividual.quantity)} />
+                {selectedIndividual.kind !== "custom_label" && (
+                  <DetailRow
+                    label="Modalidad"
+                    value={barcodeModeLabel(selectedIndividual.prints_barcode)}
+                  />
+                )}
                 <DetailRow
                   label="Estado"
                   value={<StatusBadge status={selectedIndividual.status} />}

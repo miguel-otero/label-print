@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { CircleAlert } from "lucide-react";
 import { Badge } from "@/shared/ui/badge";
 import { TableRender } from "@/shared/layouts/table-render";
+import { barcodeModeLabel } from "@/shared/utils/utils";
 
 const headBase =
   "sticky top-0 z-10 bg-card px-1.5 text-center align-middle text-xs text-foreground shadow-sm 2xl:text-sm";
@@ -102,7 +103,18 @@ export function InventoryTable({
       header: "Presentaciones",
       headClassName: `${headBase} w-36 text-center`,
       cellClassName: "text-center align-middle",
-      render: (item) => item.presentations.length || "—",
+      render: (item) => (
+        <>
+          <div>{item.presentations.length || "—"}</div>
+          {[...new Set(item.presentations.map((product) => product.own_code !== false))].map(
+            (printsBarcode) => (
+              <div key={String(printsBarcode)} className="text-xs text-muted-foreground">
+                {barcodeModeLabel(printsBarcode)}
+              </div>
+            ),
+          )}
+        </>
+      ),
     },
     {
       key: "status",

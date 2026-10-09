@@ -6,6 +6,7 @@ from psycopg import sql
 from psycopg.rows import dict_row
 
 from app.print_queue import PrintQueueService
+from app.product_catalog import catalog_source
 from app.printer import BatchLabel, build_batch_queue_documents
 from app.schemas import (
     InventoryBatchItemResult,
@@ -115,6 +116,7 @@ class InventoryPrintService:
             conn.execute(
                 "create index if not exists print_batch_items_batch_id_idx on print_batch_items (batch_id)"
             )
+            conn.execute("alter table print_batch_items add column if not exists prints_barcode boolean")
 
     def get_warehouses(self) -> list[str]:
         self._require_postgres()
@@ -174,9 +176,8 @@ class InventoryPrintService:
                        '[]'::jsonb
                    ) as presentations
             from {inventory} as inv
-            left join {products} as p
+            left join {catalog} as p
               on p.referencia = inv.referencia
-             and p.codigo_propio = true
              and (
                  %(line_count)s = 0
                  or p.linea = any(%(lines)s::text[])
@@ -188,7 +189,6 @@ class InventoryPrintService:
                       select 1
                       from {products} as line_product
                       where line_product.referencia = inv.referencia
-                        and line_product.codigo_propio = true
                         and line_product.linea = any(%(lines)s::text[])
                   )
               )
@@ -199,7 +199,6 @@ class InventoryPrintService:
                       select 1
                       from {products} as searched_product
                       where searched_product.referencia = inv.referencia
-                        and searched_product.codigo_propio = true
                         and (
                             searched_product.descripcion ilike %(pattern)s
                             or searched_product.codigo_barra ilike %(pattern)s
@@ -210,7 +209,11 @@ class InventoryPrintService:
             group by inv.id_inventory, inv.bodega, inv.referencia, inv.inventario
             order by sort_line nulls last, sort_description nulls last, inv.referencia
             """
-        ).format(inventory=inventory_table, products=products_table)
+        ).format(
+            inventory=inventory_table,
+            products=products_table,
+            catalog=catalog_source(self.settings.products_table),
+        )
 
         with self._connect() as conn:
             rows = conn.execute(
@@ -343,7 +346,7 @@ class InventoryPrintService:
                                    nullif(p.unidad_de_medida_barras, '')
                                )
                            )
-                           order by p.cantidadxum, p.codigo_barra
+                           order by p.codigo_propio desc, p.cantidadxum, p.codigo_barra
                        ) filter (where p.id is not null),
                        '[]'::jsonb
                    ) as presentations
@@ -356,9 +359,8 @@ class InventoryPrintService:
                 order by source.codigo_propio desc, source.id
                 limit 1
             ) as product_info on true
-            left join {products} as p
+            left join {catalog} as p
               on p.referencia = entry.referencia
-             and p.codigo_propio = true
             where entry.bodega = %(warehouse)s
               and entry.documento = %(document)s
             group by entry.id_inventory_entries, entry.bodega, entry.documento,
@@ -368,7 +370,11 @@ class InventoryPrintService:
                      product_info.description nulls last,
                      entry.referencia
             """
-        ).format(entries=entries_table, products=products_table)
+        ).format(
+            entries=entries_table,
+            products=products_table,
+            catalog=catalog_source(self.settings.products_table),
+        )
 
         with self._connect() as conn:
             rows = conn.execute(
@@ -462,7 +468,6 @@ class InventoryPrintService:
                         inner join {products} as p
                           on p.id = %(product_id)s
                          and p.referencia = inv.referencia
-                         and p.codigo_propio = true
                         where inv.id_inventory = %(inventory_id)s
                         """
                     ).format(inventory=inventory_table, products=products_table),
@@ -489,6 +494,7 @@ class InventoryPrintService:
                             reference=str(row["referencia"]),
                             description=product.description,
                             barcode=product.barcode,
+                            prints_barcode=product.own_code,
                             presentation=product.presentation_quantity,
                             inventory_quantity=row["inventario"],
                             requested_labels=item.quantity,
@@ -609,7 +615,6 @@ class InventoryPrintService:
                         inner join {products} as p
                           on p.id = %(product_id)s
                          and p.referencia = entry.referencia
-                         and p.codigo_propio = true
                         where entry.id_inventory_entries = %(entry_id)s
                           and entry.bodega = %(warehouse)s
                           and entry.documento = %(document)s
@@ -641,6 +646,7 @@ class InventoryPrintService:
                             reference=str(row["referencia"]),
                             description=product.description,
                             barcode=product.barcode,
+                            prints_barcode=product.own_code,
                             presentation=product.presentation_quantity,
                             inventory_quantity=row["entradas_inv"],
                             requested_labels=item.quantity,
@@ -718,7 +724,7 @@ class InventoryPrintService:
                 """
                 select batch_id, product_id, reference, product_description, barcode,
                        presentation, inventory_quantity, requested_labels,
-                       printed_labels, failed_labels, status, message
+                       printed_labels, failed_labels, status, message, prints_barcode
                 from print_batch_items
                 where batch_id = any(%s)
                 order by id
@@ -734,6 +740,7 @@ class InventoryPrintService:
                     reference=row["reference"],
                     description=row["product_description"],
                     barcode=row["barcode"],
+                    prints_barcode=row["prints_barcode"],
                     presentation=row["presentation"],
                     inventory_quantity=row["inventory_quantity"],
                     requested_labels=row["requested_labels"],
@@ -814,12 +821,14 @@ class InventoryPrintService:
     @staticmethod
     def _validate_presentation(product: Product) -> None:
         try:
-            quantity = Decimal(product.quantity_per_unit or "")
+            quantity = Decimal((product.quantity_per_unit or "").strip().replace(",", "."))
         except InvalidOperation as exc:
             raise InventoryPrintError("La cantidad por UM no es valida.") from exc
-        if quantity <= 0:
+        if not quantity.is_finite() or quantity <= 0:
             raise InventoryPrintError("La cantidad por UM debe ser positiva.")
-        if not product.barcode.strip():
+        if not (product.barcode_unit_measure or "").strip():
+            raise InventoryPrintError("La presentacion no tiene unidad de medida.")
+        if product.own_code and not product.barcode.strip():
             raise InventoryPrintError("La presentacion no tiene codigo de barras.")
 
     def _save_batch_history(
@@ -869,8 +878,8 @@ class InventoryPrintService:
                         insert into print_batch_items
                             (batch_id, product_id, reference, product_description, barcode,
                              presentation, inventory_quantity, requested_labels,
-                             printed_labels, failed_labels, status, message)
-                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                             printed_labels, failed_labels, status, message, prints_barcode)
+                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         [
                             (
@@ -886,6 +895,7 @@ class InventoryPrintService:
                                 item.failed_labels,
                                 item.status,
                                 item.message,
+                                item.prints_barcode,
                             )
                             for item in items
                         ],

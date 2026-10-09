@@ -41,6 +41,7 @@ class PrintQueueService:
             return
         statuses = "'queued', 'processing', 'success', 'partial', 'error', 'unknown'"
         with self._connect() as conn:
+            conn.execute("alter table print_history add column if not exists prints_barcode boolean")
             conn.execute("alter table print_history drop constraint if exists print_history_status_check")
             conn.execute(f"alter table print_history add constraint print_history_status_check check (status in ({statuses}))")
             conn.execute("alter table print_batches drop constraint if exists print_batches_status_check")

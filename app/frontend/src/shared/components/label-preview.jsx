@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { getFormatPreview } from "@/shared/api/api";
 import { Package } from "lucide-react";
 import { formatPresentationQuantity } from "@/shared/utils/utils";
+import {
+  buildLabelRegions,
+  getElementRegionIndex,
+  resolvePreviewValue,
+} from "@/shared/utils/label-preview";
 
 function Barcode({ value, compact = false }) {
   // Stylized visual barcode placeholder (not real ZPL).
@@ -64,7 +69,7 @@ function BarcodeSvg({ value, x, y, width, height }) {
   );
 }
 
-function ZplTemplatePreview({ product, format, quantity }) {
+function ZplTemplatePreview({ product, products, format, quantity }) {
   const [layout, setLayout] = useState(null);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
@@ -95,7 +100,8 @@ function ZplTemplatePreview({ product, format, quantity }) {
   if (!layout) {
     return null;
   }
-  const filledSlots = Math.min(3, Math.max(1, quantity));
+  const slotProducts = products ?? Array(Math.min(3, Math.max(1, quantity))).fill(product);
+  // Infer all three columns from the original layout before hiding any bars.
   const regions = buildLabelRegions(layout);
   return (
     <div className="flex w-full flex-col items-center gap-3">
@@ -119,7 +125,7 @@ function ZplTemplatePreview({ product, format, quantity }) {
             >
               {layout.elements.map((element, index) => {
                 if (getElementRegionIndex(element, regions) !== regionIndex) return null;
-                const value = resolveElementValue(element, product, filledSlots);
+                const value = resolvePreviewValue(element, slotProducts, regions);
                 if (!value) return null;
                 return (
                   <PreviewElement
@@ -144,35 +150,6 @@ function ZplTemplatePreview({ product, format, quantity }) {
       )}
     </div>
   );
-}
-
-function buildLabelRegions(layout) {
-  const anchors = layout.elements
-    .filter((element) => element.kind === "barcode")
-    .map((element) => element.x)
-    .sort((a, b) => a - b);
-  if (anchors.length < 2) {
-    return [{ start: 0, end: layout.width, width: layout.width }];
-  }
-  const firstBarcodeInset = anchors[0];
-  const boundaries = [
-    ...anchors.map((anchor) => Math.max(0, anchor - firstBarcodeInset)),
-    layout.width,
-  ];
-  return boundaries.slice(0, -1).map((start, index) => {
-    const end = boundaries[index + 1];
-    return { start, end, width: end - start };
-  });
-}
-
-function getElementRegionIndex(element, regions) {
-  const fieldPosition = readFieldPosition(element.field);
-  if (fieldPosition !== null && fieldPosition >= 1 && fieldPosition <= regions.length) {
-    return fieldPosition - 1;
-  }
-  const anchorX = element.width !== null ? element.x + element.width / 2 : element.x;
-  const index = regions.findIndex((region) => anchorX >= region.start && anchorX < region.end);
-  return index === -1 ? regions.length - 1 : index;
 }
 
 function PreviewElement({ element, region, value }) {
@@ -278,32 +255,7 @@ function estimateBarcodeWidth(element, region, value) {
   return Math.max(120, region.width - localX - rightMargin);
 }
 
-function resolveElementValue(element, product, filledSlots) {
-  const position = readFieldPosition(element.field);
-  if (position !== null && position > filledSlots) {
-    return "";
-  }
-  if (element.kind === "graphic") {
-    return element.label ?? "";
-  }
-  return element.field
-    .replace(/Descripcion\d*/g, product.description)
-    .replace(/Codigo(?!barras)\d*/g, product.product_code)
-    .replace(
-      /Presentacion\d*/g,
-      formatPresentationQuantity(product.presentation_quantity) || "1 unidad",
-    )
-    .replace(/Codigobarras\d*/g, product.barcode);
-}
-
-function readFieldPosition(field) {
-  const match = field.match(
-    /(?:Descripcion|CodigoLabel|Codigo|PresentacionLabel|Presentacion|Codigobarras)(\d+)/,
-  );
-  return match ? Number(match[1]) : null;
-}
-
-export function LabelPreview({ product, format, quantity = 1 }) {
+export function LabelPreview({ product, products, format, quantity = 1 }) {
   if (!product || !format) {
     return (
       <div className="flex h-64 flex-col items-center justify-center rounded-md border border-dashed text-center text-sm text-muted-foreground">
@@ -318,14 +270,19 @@ export function LabelPreview({ product, format, quantity = 1 }) {
   const height = format.height_mm * scale;
   const missing =
     !product.product_code ||
-    !product.barcode ||
+    (product.own_code !== false && !product.barcode) ||
     (format.preview_type === "format1" && (!product.description || !product.unit_of_measure)) ||
     (format.preview_type === "format2" && !product.presentation_quantity);
   const isTemplateBackedFormat = Boolean(format.template_file);
   return (
     <div className="flex flex-col items-center gap-3">
       {isTemplateBackedFormat ? (
-        <ZplTemplatePreview product={product} format={format} quantity={quantity} />
+        <ZplTemplatePreview
+          product={product}
+          products={products}
+          format={format}
+          quantity={quantity}
+        />
       ) : (
         <div
           className="flex flex-col items-center justify-center rounded-sm border-2 border-foreground/80 bg-white p-2 text-black shadow-sm"
@@ -340,7 +297,9 @@ export function LabelPreview({ product, format, quantity = 1 }) {
                 <div className="line-clamp-2 text-[10px] leading-tight">{product.description}</div>
                 <div className="text-[9px] uppercase opacity-70">UM: {product.unit_of_measure}</div>
               </div>
-              <Barcode value={product.barcode} />
+              <div className="min-h-14">
+                {product.own_code !== false && <Barcode value={product.barcode} />}
+              </div>
             </div>
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-between">
@@ -352,7 +311,9 @@ export function LabelPreview({ product, format, quantity = 1 }) {
                   Presentacion: {formatPresentationQuantity(product.presentation_quantity)}
                 </div>
               </div>
-              <Barcode value={product.barcode} />
+              <div className="min-h-14">
+                {product.own_code !== false && <Barcode value={product.barcode} />}
+              </div>
             </div>
           )}
         </div>

@@ -1,7 +1,7 @@
 import { Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { TableRender } from "@/shared/layouts/table-render";
-import { cn, formatPresentationQuantity } from "@/shared/utils/utils";
+import { cn, presentationOptionLabel } from "@/shared/utils/utils";
 
 export function BatchSelectionTable({ items, onRemove, centered = false }) {
   const columns = [
@@ -18,9 +18,7 @@ export function BatchSelectionTable({ items, onRemove, centered = false }) {
       headClassName: centered ? "text-center" : undefined,
       cellClassName: cn("text-sm", centered && "text-center"),
       render: (item) =>
-        item.product
-          ? formatPresentationQuantity(item.product.presentation_quantity)
-          : "Pendiente de selección",
+        item.product ? presentationOptionLabel(item.product) : "Pendiente de selección",
     },
     {
       key: "labels",

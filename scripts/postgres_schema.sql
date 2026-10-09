@@ -80,6 +80,7 @@ create table if not exists label_images (
 alter table print_history add column if not exists kind text not null default 'individual';
 alter table print_history add column if not exists image_id bigint;
 alter table print_history add column if not exists image_name text;
+alter table print_history add column if not exists prints_barcode boolean;
 
 create table if not exists app_settings (
   key text primary key,
@@ -118,6 +119,8 @@ create table if not exists print_batch_items (
   status text not null check (status in ('queued', 'processing', 'success', 'partial', 'error', 'unknown')),
   message text
 );
+
+alter table print_batch_items add column if not exists prints_barcode boolean;
 
 create table if not exists print_agents (
   agent_id text primary key,

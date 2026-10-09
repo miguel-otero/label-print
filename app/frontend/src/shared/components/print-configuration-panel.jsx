@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Eye, Loader2, Minus, Plus, Printer } from "lucide-react";
 import { LabelPreview } from "@/shared/components/label-preview";
+import { barcodeModeLabel } from "@/shared/utils/utils";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -14,6 +15,7 @@ export function PrintConfigurationPanel({
   formatId,
   onFormatChange,
   product,
+  previewProducts,
   quantity,
   previewQuantity,
   onQuantityChange,
@@ -38,6 +40,13 @@ export function PrintConfigurationPanel({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          {product && (
+            <p className="text-sm text-muted-foreground">
+              {[...new Set((previewProducts ?? [product]).map((item) => item.own_code !== false))]
+                .map(barcodeModeLabel)
+                .join(" · ")}
+            </p>
+          )}
           <div className="space-y-2">
             <Label>Formato de etiqueta</Label>
             <Select value={formatId} onValueChange={onFormatChange}>
@@ -169,6 +178,7 @@ export function PrintConfigurationPanel({
           <CardContent>
             <LabelPreview
               product={product}
+              products={previewProducts}
               format={selectedFormat}
               quantity={previewQuantity ?? quantity}
             />

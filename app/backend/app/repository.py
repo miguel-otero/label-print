@@ -8,6 +8,7 @@ from psycopg import sql
 from psycopg.rows import dict_row
 
 from app.mock_data import FORMATS, HISTORY, PRODUCTS
+from app.product_catalog import catalog_source, group_presentations, presentation_key
 from app.schemas import LabelFormat, LabelFormatPayload, PrintHistory, Product
 from app.settings import Settings
 
@@ -59,16 +60,21 @@ class MockRepository:
     def _filter_products(self, search: str | None, *, lines: list[str]) -> list[Product]:
         query = normalize((search or "").strip())
         selected_lines = {line for line in lines if line}
-        products = [product for product in PRODUCTS if product.own_code]
+        products = group_presentations(PRODUCTS)
         if selected_lines:
             products = [product for product in products if product.line in selected_lines]
         if query:
+            matching_keys = {
+                presentation_key(product)
+                for product in PRODUCTS
+                if query in normalize(product.barcode)
+            }
             products = [
                 product
                 for product in products
                 if query in normalize(product.product_code)
                 or query in normalize(product.description)
-                or query in normalize(product.barcode)
+                or presentation_key(product) in matching_keys
                 or query in normalize(product.line or "")
             ]
         return products
@@ -87,7 +93,7 @@ class MockRepository:
         return len(self._filter_products(search, lines=lines))
 
     def get_product_lines(self) -> list[str]:
-        return sorted({product.line for product in PRODUCTS if product.line and product.own_code})
+        return sorted({product.line for product in PRODUCTS if product.line})
 
     def health_check(self) -> bool:
         return True
@@ -146,6 +152,7 @@ class MockRepository:
             quantity=quantity,
             status=status,
             message=message,
+            prints_barcode=product.own_code,
         )
         self._history.append(item)
         return item
@@ -168,7 +175,7 @@ class PostgresRepository:
             row_factory=dict_row,
         )
 
-    def _product_select_sql(self) -> sql.SQL:
+    def _product_select_sql(self, *, grouped: bool = False) -> sql.Composed:
         return sql.SQL(
             """
             select id,
@@ -181,9 +188,12 @@ class PostgresRepository:
                    cantidadxum as quantity_per_unit,
                    codigo_propio as own_code,
                    concat_ws(' ', nullif(cantidadxum, ''), nullif(unidad_de_medida_barras, '')) as presentation_quantity
-            from {table}
+            from {table} as catalog
             """
-        ).format(table=sql.Identifier(self.settings.products_table))
+        ).format(
+            table=catalog_source(self.settings.products_table)
+            if grouped else sql.Identifier(self.settings.products_table)
+        )
 
     def _product_filter_sql(
         self,
@@ -193,7 +203,7 @@ class PostgresRepository:
     ) -> tuple[sql.SQL, dict[str, object]]:
         term = (search or "").strip()
         selected_lines = [line for line in lines if line]
-        conditions: list[sql.SQL] = [sql.SQL("codigo_propio = true")]
+        conditions: list[sql.SQL] = [sql.SQL("true")]
         params: dict[str, object] = {}
 
         if term:
@@ -203,7 +213,8 @@ class PostgresRepository:
                     (
                         referencia ilike %(pattern)s
                         or descripcion ilike %(pattern)s
-                        or codigo_barra ilike %(pattern)s
+                        or exists (select 1 from unnest(barcode_aliases) as alias(code)
+                                   where alias.code ilike %(pattern)s)
                         or linea ilike %(pattern)s
                     )
                     """
@@ -229,7 +240,7 @@ class PostgresRepository:
         params.update({"limit": limit, "offset": offset})
         with self._connect() as conn:
             rows = conn.execute(
-                self._product_select_sql()
+                self._product_select_sql(grouped=True)
                 + where_sql
                 + sql.SQL(
                     """
@@ -245,8 +256,8 @@ class PostgresRepository:
         where_sql, params = self._product_filter_sql(search, lines=lines)
         with self._connect() as conn:
             row = conn.execute(
-                sql.SQL("select count(*) as total from {table}").format(
-                    table=sql.Identifier(self.settings.products_table)
+                sql.SQL("select count(*) as total from {table} as catalog").format(
+                    table=catalog_source(self.settings.products_table)
                 )
                 + where_sql,
                 params,
@@ -260,8 +271,7 @@ class PostgresRepository:
                     """
                     select distinct linea as line
                     from {table}
-                    where codigo_propio = true
-                      and linea is not null
+                    where linea is not null
                       and linea <> ''
                     order by linea
                     """
@@ -389,7 +399,6 @@ class PostgresRepository:
                 + sql.SQL(
                     """
                     where id = %(id)s
-                      and codigo_propio = true
                     limit 1
                     """
                 ),
@@ -416,18 +425,19 @@ class PostgresRepository:
             "quantity": quantity,
             "status": status,
             "message": message,
+            "prints_barcode": product.own_code,
         }
         with self._connect() as conn:
             row = conn.execute(
                 sql.SQL(
                     """
                     insert into {table}
-                        (timestamp, "user", product_code, product_description, format, quantity, status, message)
+                        (timestamp, "user", product_code, product_description, format, quantity, status, message, prints_barcode)
                     values
                         (%(timestamp)s, %(user)s, %(product_code)s, %(product_description)s,
-                         %(format)s, %(quantity)s, %(status)s, %(message)s)
+                         %(format)s, %(quantity)s, %(status)s, %(message)s, %(prints_barcode)s)
                     returning id, timestamp, "user", product_code, product_description,
-                              format, quantity, status, message
+                              format, quantity, status, message, prints_barcode
                     """
                 ).format(table=sql.Identifier(self.settings.history_table)),
                 payload,
@@ -442,7 +452,7 @@ class PostgresRepository:
                     select history.id, history.timestamp, history."user", history.product_code,
                            history.product_description, history.format, history.quantity,
                            history.status, history.message, history.kind,
-                           history.image_id, history.image_name,
+                           history.image_id, history.image_name, history.prints_barcode,
                            (select max(jobs.id) from print_jobs jobs
                             where jobs.history_id = history.id) as job_id
                     from {table} history

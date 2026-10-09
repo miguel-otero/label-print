@@ -387,7 +387,7 @@ def build_zpl(*, label_format: LabelFormat, product: Product) -> str:
     code = sanitize_zpl_text(product.product_code)
     unit = sanitize_zpl_text(product.unit_of_measure)
     presentation = sanitize_zpl_text(product.presentation_quantity)
-    barcode = sanitize_barcode(product.barcode)
+    barcode = sanitize_barcode(product.barcode) if product.own_code else ""
 
     if label_format.preview_type == "format2":
         return small_label_zpl(
@@ -450,14 +450,18 @@ def build_mixed_zpl_job(
 def populate_template(*, template: str, products: list[Product]) -> str:
     replacements: dict[str, str] = {}
     output = template
+    regions = template_slot_regions(template)
 
     for position in range(1, 4):
         if position <= len(products):
+            product = products[position - 1]
+            if not product.own_code:
+                output = remove_template_barcode(output, position)
             replacements.update(
-                template_values(product=products[position - 1], position=position)
+                template_values(product=product, position=position)
             )
         else:
-            output = remove_empty_template_slot(output, position)
+            output = remove_empty_template_slot(output, position, regions=regions)
             replacements.update(empty_template_values(position=position))
 
     return replace_template_values(output, replacements)
@@ -508,12 +512,24 @@ def validate_zpl_template(template: str, filename: str) -> None:
 
 
 def template_values(*, product: Product, position: int) -> dict[str, str]:
+    if not product.own_code:
+        try:
+            quantity = Decimal((product.quantity_per_unit or "").strip().replace(",", "."))
+        except InvalidOperation as exc:
+            raise PrinterError("La cantidad por UM no es valida.") from exc
+        if not quantity.is_finite() or quantity <= 0:
+            raise PrinterError("La cantidad por UM debe ser positiva.")
+        if (
+            not (product.barcode_unit_measure or "").strip()
+            or not product.presentation_quantity.strip()
+        ):
+            raise PrinterError("La presentacion no tiene unidad de medida.")
     presentation = format_presentation_quantity(product.presentation_quantity or "1 unidad")
     return {
         f"Codigo{position}": sanitize_zpl_text(product.product_code),
         f"Descripcion{position}": sanitize_zpl_text(product.description),
         f"Presentacion{position}": sanitize_zpl_text(presentation),
-        f"Codigobarras{position}": sanitize_barcode(product.barcode),
+        f"Codigobarras{position}": sanitize_barcode(product.barcode) if product.own_code else "",
     }
 
 
@@ -543,8 +559,26 @@ def format_presentation_quantity(value: str) -> str:
     return f"{int(quantity)}{match.group('suffix')}"
 
 
-def remove_empty_template_slot(template: str, position: int) -> str:
-    output = remove_static_label_fields(template, position)
+def remove_template_barcode(template: str, position: int) -> str:
+    # ^BC also prints its human-readable digits. Remove the entire field,
+    # using the original template's slot regions for subsequent empty slots.
+    pattern = (
+        r"(?:\^BY[^^]*)?\^(?:FT|FO)[^^]*(?:(?!\^FS).)*?"
+        rf"\^FDCodigobarras{position}\^FS"
+    )
+    output = re.sub(pattern, "", template, flags=re.S)
+    if f"Codigobarras{position}" in output:
+        raise PrinterError("No se pudo retirar el campo de barras de la plantilla.")
+    return output
+
+
+def remove_empty_template_slot(
+    template: str,
+    position: int,
+    *,
+    regions: dict[int, tuple[float, float]] | None = None,
+) -> str:
+    output = remove_static_label_fields(template, position, regions=regions)
     return remove_placeholder_fields(output, position)
 
 
@@ -569,8 +603,14 @@ def remove_placeholder_fields(template: str, position: int) -> str:
     return "".join(line for index, line in enumerate(lines) if index not in remove_indexes)
 
 
-def remove_static_label_fields(template: str, position: int) -> str:
-    regions = template_slot_regions(template)
+def remove_static_label_fields(
+    template: str,
+    position: int,
+    *,
+    regions: dict[int, tuple[float, float]] | None = None,
+) -> str:
+    if regions is None:
+        regions = template_slot_regions(template)
     if position not in regions:
         return template
 
@@ -669,7 +709,10 @@ def standard_label_zpl(
             f"^FO24,56^A0N,24,24^FD{desc_lines[0]}^FS",
             f"^FO24,86^A0N,24,24^FD{desc_lines[1]}^FS",
             f"^FO24,122^A0N,22,22^FDUM: {unit}  Pres: {presentation}^FS",
-            f"^FO24,{max(152, height - 126)}^BY2,2,62^BCN,62,Y,N,N^FD{barcode}^FS",
+            *(
+                [f"^FO24,{max(152, height - 126)}^BY2,2,62^BCN,62,Y,N,N^FD{barcode}^FS"]
+                if barcode else []
+            ),
             "^XZ",
         ]
     )
@@ -692,7 +735,10 @@ def small_label_zpl(
             "^LH0,0",
             f"^FO18,14^A0N,26,26^FD{code}^FS",
             f"^FO18,46^A0N,20,20^FD{desc_lines[0]}^FS",
-            f"^FO18,{max(72, height - 92)}^BY2,2,48^BCN,48,Y,N,N^FD{barcode}^FS",
+            *(
+                [f"^FO18,{max(72, height - 92)}^BY2,2,48^BCN,48,Y,N,N^FD{barcode}^FS"]
+                if barcode else []
+            ),
             "^XZ",
         ]
     )

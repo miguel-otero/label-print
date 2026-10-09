@@ -10,6 +10,7 @@ import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { TableRender } from "@/shared/layouts/table-render";
 import { Badge } from "@/shared/ui/badge";
+import { barcodeModeLabel, batchPreviewProducts } from "@/shared/utils/utils";
 import { InventoryPagination } from "@/features/inventory/components/inventory-pagination";
 import { BatchSelectionTable } from "@/features/inventory/components/batch-selection-table";
 import { PrepareBatchDialog } from "@/features/inventory/components/prepare-batch-dialog";
@@ -31,7 +32,7 @@ const centerMonoCellClassName =
   "text-center align-middle font-mono text-xs text-foreground 2xl:text-sm";
 
 function automaticQuantity(entryQuantity, product) {
-  const quantityPerUnit = Number(product.quantity_per_unit);
+  const quantityPerUnit = Number(String(product.quantity_per_unit ?? "").replace(",", "."));
   if (!Number.isFinite(quantityPerUnit) || quantityPerUnit <= 0) return 0;
   return Math.floor(Math.ceil(Number(entryQuantity)) / quantityPerUnit);
 }
@@ -120,8 +121,8 @@ export function InventoryEntryPrintPage() {
   const selectedItems = useMemo(() => Array.from(selected.values()), [selected]);
   const totalLabels = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
   const selectedFormat = formats.find((format) => String(format.id) === formatId) ?? null;
-  const previewItem = selectedItems[0] ?? null;
-  const previewProduct = previewItem?.product ?? previewItem?.inventory.presentations[0] ?? null;
+  const previewProducts = batchPreviewProducts(selectedItems);
+  const previewProduct = previewProducts[0] ?? null;
   const printableItems = selectedItems.filter((item) => item.product && item.quantity > 0);
   const unresolved = selectedItems.some((item) => item.quantity > 0 && !item.product);
   const overLimit = totalLabels > maxLabels;
@@ -343,7 +344,18 @@ export function InventoryEntryPrintPage() {
       header: "Presentaciones",
       headClassName: `${headClassName} w-32`,
       cellClassName: centerCellClassName,
-      render: (item) => item.presentations.length || "-",
+      render: (item) => (
+        <>
+          <div>{item.presentations.length || "-"}</div>
+          {[...new Set(item.presentations.map((product) => product.own_code !== false))].map(
+            (printsBarcode) => (
+              <div key={String(printsBarcode)} className="text-xs text-muted-foreground">
+                {barcodeModeLabel(printsBarcode)}
+              </div>
+            ),
+          )}
+        </>
+      ),
     },
     {
       key: "status",
@@ -375,7 +387,9 @@ export function InventoryEntryPrintPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Documentos de entrada</CardTitle>
-              <CardDescription>Filtra por bodega y selecciona el documento a imprimir.</CardDescription>
+              <CardDescription>
+                Filtra por bodega y selecciona el documento a imprimir.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Button
@@ -501,7 +515,8 @@ export function InventoryEntryPrintPage() {
             onFormatChange={setFormatId}
             product={previewProduct}
             quantity={totalLabels}
-            previewQuantity={Math.max(1, previewItem?.quantity ?? 1)}
+            previewProducts={previewProducts}
+            previewQuantity={totalLabels}
             quantityLabel="Etiquetas del lote"
             quantityHelp={`Limite configurado: ${maxLabels}. Las cantidades se ajustan antes de imprimir.`}
             description={
