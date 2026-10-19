@@ -1,6 +1,7 @@
 services:
   clinic_db:
     container_name: clinic_db
+    restart: unless-stopped
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${CLINIC_DATABASE_NAME:?Set CLINIC_DATABASE_NAME in conn/.env}
@@ -20,6 +21,7 @@ services:
 
   clinic_backend:
     container_name: clinic_backend
+    restart: unless-stopped
     build:
       context: app/backend
       dockerfile: ../../docker/backend.Dockerfile
@@ -48,6 +50,7 @@ services:
 
   clinic_frontend:
     container_name: clinic_frontend
+    restart: unless-stopped
     build:
       context: app/frontend
       dockerfile: ../../docker/frontend.Dockerfile
