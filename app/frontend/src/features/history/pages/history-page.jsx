@@ -169,6 +169,10 @@ export function HistoryPage() {
                 <DetailRow label="Usuario" value={selectedBatch.user} />
                 <DetailRow label="Bodega" value={selectedBatch.warehouse} />
                 <DetailRow
+                  label="Equipo / Impresora"
+                  value={`${selectedBatch.target_name || "Sin dato"} · ${selectedBatch.printer_name || ""}`}
+                />
+                <DetailRow
                   label="Origen"
                   value={
                     selectedBatch.source === "inventory_entry"

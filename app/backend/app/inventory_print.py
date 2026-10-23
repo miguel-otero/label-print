@@ -1,3 +1,7 @@
+from contextlib import nullcontext
+from app.database import queue_transaction
+from app.retention import retention_cutoff
+
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 
@@ -220,6 +224,7 @@ class InventoryPrintService:
                 query,
                 {
                     "warehouse": warehouse,
+                    "cutoff": retention_cutoff(self.settings).date(),
                     "search": (search or "").strip(),
                     "pattern": pattern,
                     "lines": selected_lines,
@@ -283,7 +288,7 @@ class InventoryPrintService:
                    count(distinct referencia) as reference_count,
                    coalesce(sum(entradas_inv), 0) as total_entry_quantity
             from {entries}
-            where bodega = %(warehouse)s
+            where bodega = %(warehouse)s and fecha >= %(cutoff)s
               and (
                   %(search)s = ''
                   or documento ilike %(pattern)s
@@ -300,6 +305,7 @@ class InventoryPrintService:
                 query,
                 {
                     "warehouse": warehouse,
+                    "cutoff": retention_cutoff(self.settings).date(),
                     "search": (search or "").strip(),
                     "pattern": pattern,
                 },
@@ -361,7 +367,7 @@ class InventoryPrintService:
             ) as product_info on true
             left join {catalog} as p
               on p.referencia = entry.referencia
-            where entry.bodega = %(warehouse)s
+            where entry.fecha >= %(cutoff)s and entry.bodega = %(warehouse)s
               and entry.documento = %(document)s
             group by entry.id_inventory_entries, entry.bodega, entry.documento,
                      entry.fecha, entry.referencia, entry.entradas_inv,
@@ -381,6 +387,7 @@ class InventoryPrintService:
                 query,
                 {
                     "warehouse": warehouse,
+                    "cutoff": retention_cutoff(self.settings).date(),
                     "document": document,
                 },
             ).fetchall()
@@ -517,23 +524,27 @@ class InventoryPrintService:
         results = [result for result, _ in validated]
         documents = build_batch_queue_documents(label_format=label_format, labels=labels)
 
-        batch_id = self._save_batch_history(
-            user=user,
-            format_code=label_format.code,
-            warehouse=payload.warehouse,
-            requested_labels=requested_labels,
-            printed_labels=0,
-            failed_labels=0,
-            status="queued",
-            message=None,
-            items=results,
-        )
-        job_id = self.print_queue.enqueue(
-            kind="inventory",
-            documents=documents,
-            requested_labels=requested_labels,
-            batch_id=batch_id,
-        )
+        with self._connect() as conn:
+            queue_transaction(conn)
+            batch_id = self._save_batch_history(
+                connection=conn,
+                user=user,
+                format_code=label_format.code,
+                warehouse=payload.warehouse,
+                requested_labels=requested_labels,
+                printed_labels=0,
+                failed_labels=0,
+                status="queued",
+                message=None,
+                items=results,
+            )
+            job_id = self.print_queue.enqueue(
+                kind="inventory",
+                documents=documents,
+                requested_labels=requested_labels,
+                batch_id=batch_id, connection=conn,
+                target_agent_id=payload.target_agent_id,
+            )
         return InventoryBatchPrintResponse(
             job_id=job_id,
             batch_id=batch_id,
@@ -615,7 +626,7 @@ class InventoryPrintService:
                         inner join {products} as p
                           on p.id = %(product_id)s
                          and p.referencia = entry.referencia
-                        where entry.id_inventory_entries = %(entry_id)s
+                        where entry.fecha >= %(cutoff)s and entry.id_inventory_entries = %(entry_id)s
                           and entry.bodega = %(warehouse)s
                           and entry.documento = %(document)s
                         """
@@ -624,6 +635,7 @@ class InventoryPrintService:
                         "entry_id": item.entry_id,
                         "product_id": item.product_id,
                         "warehouse": payload.warehouse,
+                        "cutoff": retention_cutoff(self.settings).date(),
                         "document": payload.document,
                     },
                 ).fetchone()
@@ -669,26 +681,30 @@ class InventoryPrintService:
         results = [result for result, _ in validated]
         documents = build_batch_queue_documents(label_format=label_format, labels=labels)
 
-        batch_id = self._save_batch_history(
-            user=user,
-            format_code=label_format.code,
-            warehouse=payload.warehouse,
-            requested_labels=requested_labels,
-            printed_labels=0,
-            failed_labels=0,
-            status="queued",
-            message=None,
-            items=results,
-            source="inventory_entry",
-            source_document=payload.document,
-            source_date=source_date,
-        )
-        job_id = self.print_queue.enqueue(
-            kind="inventory_entry",
-            documents=documents,
-            requested_labels=requested_labels,
-            batch_id=batch_id,
-        )
+        with self._connect() as conn:
+            queue_transaction(conn)
+            batch_id = self._save_batch_history(
+                connection=conn,
+                user=user,
+                format_code=label_format.code,
+                warehouse=payload.warehouse,
+                requested_labels=requested_labels,
+                printed_labels=0,
+                failed_labels=0,
+                status="queued",
+                message=None,
+                items=results,
+                source="inventory_entry",
+                source_document=payload.document,
+                source_date=source_date,
+            )
+            job_id = self.print_queue.enqueue(
+                kind="inventory_entry",
+                documents=documents,
+                requested_labels=requested_labels,
+                batch_id=batch_id, connection=conn,
+                target_agent_id=payload.target_agent_id,
+            )
         return InventoryBatchPrintResponse(
             job_id=job_id,
             batch_id=batch_id,
@@ -709,12 +725,14 @@ class InventoryPrintService:
                        batch.requested_labels, batch.printed_labels, batch.failed_labels,
                        batch.status, batch.message, batch.source, batch.source_document,
                        batch.source_date,
-                       (select max(jobs.id) from print_jobs jobs
-                        where jobs.batch_id = batch.id) as job_id
+                       job.id as job_id, job.target_agent_id, job.target_name, job.printer_name
                 from print_batches batch
+                left join lateral (select * from print_jobs where batch_id = batch.id
+                                   order by id desc limit 1) job on true
+                where batch.timestamp >= %s
                 order by timestamp desc
                 limit 200
-                """
+                """, (retention_cutoff(self.settings),),
             ).fetchall()
             if not batches:
                 return []
@@ -846,8 +864,9 @@ class InventoryPrintService:
         status: str,
         message: str | None,
         items: list[InventoryBatchItemResult],
+        connection=None,
     ) -> int:
-        with self._connect() as conn:
+        with (nullcontext(connection) if connection is not None else self._connect()) as conn:
             with conn.transaction():
                 batch = conn.execute(
                     """

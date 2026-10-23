@@ -3,6 +3,8 @@ import { FileText } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/shared/layouts/app-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AgentsCard } from "@/features/settings/components/agents-card";
+import { useAgents } from "@/shared/agents/use-agents";
 import { PrinterCard } from "@/features/settings/components/printer-card";
 import { SystemStatusCard } from "@/features/settings/components/system-status-card";
 import { InventoryLimitCard } from "@/features/settings/components/inventory-limit-card";
@@ -14,7 +16,6 @@ import {
   getFormats,
   getFormatTemplates,
   getInventoryPrintSettings,
-  getPrinterStatus,
   pingBackend,
   printTestLabel,
   saveFormat,
@@ -33,12 +34,12 @@ const emptyFormatForm = {
 };
 
 export function SettingsPage() {
-  const [printerName, setPrinterName] = useState("ZDesigner ZD230-203dpi ZPL");
+  const { selectedAgent: agentStatus } = useAgents();
+  const printerName = agentStatus?.printer_name || "Seleccione una impresora";
   const [backendOk, setBackendOk] = useState(null);
   const [testing, setTesting] = useState(false);
   const [printingTest, setPrintingTest] = useState(false);
   const [lastResult, setLastResult] = useState(null);
-  const [agentStatus, setAgentStatus] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [formats, setFormats] = useState([]);
   const [loadingFormats, setLoadingFormats] = useState(true);
@@ -62,18 +63,6 @@ export function SettingsPage() {
           description: error instanceof Error ? error.message : "Error desconocido",
         }),
       );
-    async function refreshAgentStatus() {
-      try {
-        const status = await getPrinterStatus();
-        setAgentStatus(status);
-        setPrinterName(status.printer_name);
-      } catch {
-        setAgentStatus(null);
-      }
-    }
-    refreshAgentStatus();
-    const interval = window.setInterval(refreshAgentStatus, 5000);
-    return () => window.clearInterval(interval);
   }, []);
 
   async function handleSaveInventoryLimit() {
@@ -122,7 +111,6 @@ export function SettingsPage() {
     setTesting(true);
     try {
       const res = await testPrinter();
-      setPrinterName(res.printer);
       setLastResult({
         ok: true,
         message: res.message ?? `Impresora ${res.printer} OK`,
@@ -142,7 +130,6 @@ export function SettingsPage() {
     setPrintingTest(true);
     try {
       const res = await printTestLabel();
-      setPrinterName(res.printer);
       setLastResult({
         ok: true,
         message: res.message ?? "Etiqueta de prueba enviada",
@@ -244,9 +231,10 @@ export function SettingsPage() {
   return (
     <AppLayout title="Configuraciones" subtitle="Estado, impresora y formatos de etiquetas.">
       <div className="grid gap-6 lg:grid-cols-2">
+        <AgentsCard />
         <PrinterCard
           printerName={printerName}
-          onPrinterNameChange={setPrinterName}
+          hasDestination={Boolean(agentStatus)}
           testing={testing}
           printingTest={printingTest}
           onTest={handleTest}

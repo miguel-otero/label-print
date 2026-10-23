@@ -1,0 +1,41 @@
+name: Reusable Windows Agent Build
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $match = Get-Content app/windows_agent/pyproject.toml | Select-String '^version\s*=\s*"([^"]+)"$'
+          if (-not $match) { throw "No se encontro la version." }
+          $version = $match.Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "agent-v$version") {
+            throw "El tag no coincide con la version del agente."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Validate source syntax
+        run: python -m compileall app/backend/app app/windows_agent/agent
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          winget install --id JRSoftware.InnoSetup --version 6.7.3 -e --silent --accept-package-agreements --accept-source-agreements
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar Inno Setup." }
+      - name: Build installer
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/powershell/build-print-agent-installer.ps1 -Version "${{ steps.version.outputs.version }}"
+          if ($LASTEXITCODE -ne 0) { throw "Fallo la compilacion del instalador." }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-agent-installer
+          path: artifacts/windows-agent/*
+          if-no-files-found: error

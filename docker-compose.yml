@@ -29,11 +29,13 @@ services:
       - ./app/backend:/app
       - ./scripts:/scripts:ro
       - ./storage/label-images:/data/label-images
+      - ./storage/agent-release:/data/agent-release:ro
     env_file:
       - ./conn/.env
     environment:
       CLINIC_DATABASE_HOST: clinic_db
       CLINIC_LABEL_IMAGES_DIR: /data/label-images
+      CLINIC_AGENT_RELEASE_DIR: /data/agent-release
       CLINIC_SYNC_QUERY_DIR: /scripts
       CLINIC_DATABASE_NAME: ${CLINIC_DATABASE_NAME:?Set CLINIC_DATABASE_NAME in conn/.env}
       CLINIC_DATABASE_USER: ${CLINIC_DATABASE_USER:?Set CLINIC_DATABASE_USER in conn/.env}
@@ -54,14 +56,7 @@ services:
     build:
       context: app/frontend
       dockerfile: ../../docker/frontend.Dockerfile
-      target: dev
-    volumes:
-      - ./app/frontend:/app
-      - /app/node_modules
-      - /app/.vite
-      - /app/.nitro
-    env_file:
-      - ./conn/.env
+      target: production
     ports:
       - "8083:80"
     depends_on:

@@ -9,6 +9,8 @@ if (-not $NoUpload -and -not (Get-Command gsutil -ErrorAction SilentlyContinue))
     throw "Falta gsutil. Instale Google Cloud CLI y autentiquese, o use -NoUpload."
 }
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../.."))
+python (Join-Path $repoRoot "scripts/prepare_agent_release.py") --verify
+if ($LASTEXITCODE -ne 0) { throw "Prepare un instalador verificado antes de empaquetar." }
 $paths = Get-Content -LiteralPath (Join-Path $repoRoot "scripts/deploy-files.txt") | Where-Object { $_.Trim() }
 foreach ($entry in $paths) {
     if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $entry))) { throw "Falta un archivo/directorio requerido: $entry" }

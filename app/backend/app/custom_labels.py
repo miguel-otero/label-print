@@ -179,11 +179,13 @@ class CustomLabelService:
         except (OSError, ValueError) as exc:
             raise CustomLabelError("No se pudo leer la imagen almacenada.") from exc
 
-    def print_image(self, image_id: int, quantity: int, user: str) -> PrintResponse:
+    def print_image(self, image_id: int, quantity: int, user: str, target_agent_id: str | None = None) -> PrintResponse:
+        from app.database import queue_transaction
         image, bitmap = self.bitmap(image_id)
         documents = build_custom_label_documents(bitmap, quantity)
         with self.queue._connect() as conn:
             with conn.transaction():
+                queue_transaction(conn)
                 history = conn.execute(
                     sql.SQL("""insert into {} ("user", product_code, product_description,
                                format, quantity, status, kind, image_id, image_name)
@@ -193,6 +195,6 @@ class CustomLabelService:
                 ).fetchone()
                 job_id = self.queue.enqueue(
                     kind="custom_label", documents=documents, requested_labels=quantity,
-                    history_id=history["id"], connection=conn,
+                    history_id=history["id"], connection=conn, target_agent_id=target_agent_id,
                 )
         return PrintResponse(ok=True, job_id=job_id, history_id=history["id"], message="Trabajo agregado a la cola de impresion")

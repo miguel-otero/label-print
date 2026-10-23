@@ -1,5 +1,4 @@
 import asyncio
-import secrets
 from contextlib import asynccontextmanager, suppress
 from typing import Literal
 
@@ -9,6 +8,9 @@ from fastapi.responses import JSONResponse
 
 from app.custom_label_routes import create_custom_label_router
 from app.custom_labels import CustomLabelError, CustomLabelService
+from app.agent_routes import create_agent_router
+from app.database import queue_transaction
+from app.retention import RetentionRunner, RetentionService
 
 from app.inventory_print import InventoryPrintError, InventoryPrintService
 from app.inventory_sync import InventorySyncRunner, InventorySyncService
@@ -37,6 +39,8 @@ from app.schemas import (
     PrintResponse,
     PrinterTestResponse,
     AgentHeartbeatRequest,
+    AgentClaimRequest,
+    PrinterTargetRequest,
     AgentJobResultRequest,
     AgentPrintJob,
     PrinterAgentStatus,
@@ -52,6 +56,8 @@ custom_labels = CustomLabelService(settings, print_queue)
 inventory_print_service = InventoryPrintService(settings, print_queue)
 inventory_sync = InventorySyncService(settings)
 inventory_sync_runner = InventorySyncRunner(inventory_sync, settings)
+retention = RetentionService(settings)
+retention_runner = RetentionRunner(retention)
 
 
 @asynccontextmanager
@@ -59,11 +65,17 @@ async def lifespan(_: FastAPI):
     print_queue.ensure_schema()
     custom_labels.ensure_schema()
     inventory_print_service.ensure_schema()
+    retention.ensure_schema()
     sync_task: asyncio.Task[None] | None = None
     if settings.use_postgres and settings.external_sync_enabled:
         sync_task = asyncio.create_task(inventory_sync_runner.run())
+    retention_task = asyncio.create_task(retention_runner.run()) if settings.use_postgres else None
 
     yield
+
+    if retention_task is not None:
+        retention_runner.stop()
+        await retention_task
 
     if sync_task is not None:
         inventory_sync_runner.stop()
@@ -74,11 +86,17 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Clinic Label Print API", version="0.1.0", lifespan=lifespan)
 app.include_router(create_custom_label_router(custom_labels), prefix=settings.api_prefix)
+app.include_router(create_agent_router(print_queue.agents, retention), prefix=settings.api_prefix)
 
 
 @app.exception_handler(CustomLabelError)
 async def custom_label_error_handler(_, exc: CustomLabelError) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+
+
+@app.exception_handler(PrintQueueError)
+async def queue_error_handler(_, exc: PrintQueueError) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 app.add_middleware(
@@ -87,7 +105,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Total-Count"],
+    expose_headers=["X-Total-Count", "Content-Disposition"],
 )
 
 
@@ -95,12 +113,11 @@ def get_repository() -> Repository:
     return repository
 
 
-def require_agent_token(authorization: str | None = Header(default=None)) -> None:
-    if not settings.print_agent_token:
-        raise HTTPException(status_code=503, detail="CLINIC_PRINT_AGENT_TOKEN no esta configurado.")
+def require_agent_token(authorization: str | None = Header(default=None)) -> str:
     scheme, _, token = (authorization or "").partition(" ")
-    if scheme.lower() != "bearer" or not secrets.compare_digest(token, settings.print_agent_token):
+    if scheme.lower() != "bearer" or not token:
         raise HTTPException(status_code=401, detail="Token de agente invalido.")
+    return token
 
 
 @app.get(f"{settings.api_prefix}/health")
@@ -399,14 +416,16 @@ def print_label(
         )
     except PrinterError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    history = repo.add_history(
-        product=product, label_format=payload.formato, quantity=payload.cantidad,
-        status="queued", message=None, user=user,
-    )
-    job_id = print_queue.enqueue(
-        kind="individual", documents=documents, requested_labels=payload.cantidad,
-        history_id=history.id,
-    )
+    with print_queue._connect() as conn:
+        queue_transaction(conn)
+        history = repo.add_history(
+            product=product, label_format=payload.formato, quantity=payload.cantidad,
+            status="queued", message=None, user=user, connection=conn,
+        )
+        job_id = print_queue.enqueue(
+            kind="individual", documents=documents, requested_labels=payload.cantidad,
+            history_id=history.id, connection=conn, target_agent_id=payload.target_agent_id,
+        )
     return PrintResponse(
         ok=True,
         job_id=job_id,
@@ -416,20 +435,21 @@ def print_label(
 
 
 @app.post(f"{settings.api_prefix}/impresora/test", response_model=PrinterTestResponse)
-def test_printer() -> PrinterTestResponse:
+def test_printer(payload: PrinterTargetRequest = PrinterTargetRequest()) -> PrinterTestResponse:
     job_id = print_queue.enqueue(
         kind="printer_test",
         documents=[QueuedZplDocument(zpl="", item_counts={})],
         requested_labels=0,
+        target_agent_id=payload.target_agent_id,
     )
     return PrinterTestResponse(
-        ok=True, printer=settings.printer_name, job_id=job_id, status="queued",
+        ok=True, printer=print_queue.get_agent_status(payload.target_agent_id).printer_name, job_id=job_id, status="queued",
         message="Prueba de conexion agregada a la cola.",
     )
 
 
 @app.post(f"{settings.api_prefix}/impresora/test/etiqueta", response_model=PrinterTestResponse)
-def print_test_label() -> PrinterTestResponse:
+def print_test_label(payload: PrinterTargetRequest = PrinterTargetRequest()) -> PrinterTestResponse:
     test_format = LabelFormat(
         id=0,
         name="Prueba 3 columnas",
@@ -454,27 +474,27 @@ def print_test_label() -> PrinterTestResponse:
     )
     job_id = print_queue.enqueue(
         kind="test_label", documents=documents, requested_labels=1,
+        target_agent_id=payload.target_agent_id,
     )
     return PrinterTestResponse(
-        ok=True, printer=settings.printer_name, job_id=job_id, status="queued",
+        ok=True, printer=print_queue.get_agent_status(payload.target_agent_id).printer_name, job_id=job_id, status="queued",
         message="Etiqueta de prueba agregada a la cola.",
     )
 
 
 @app.get(f"{settings.api_prefix}/impresora/status", response_model=PrinterAgentStatus)
-def get_printer_status() -> PrinterAgentStatus:
+def get_printer_status(target_agent_id: str | None = None) -> PrinterAgentStatus:
     print_queue.mark_stale_jobs()
-    return print_queue.get_agent_status()
+    return print_queue.get_agent_status(target_agent_id)
 
 
 @app.post(
     f"{settings.api_prefix}/agente/heartbeat",
     response_model=PrinterAgentStatus,
-    dependencies=[Depends(require_agent_token)],
 )
-def agent_heartbeat(payload: AgentHeartbeatRequest) -> PrinterAgentStatus:
+def agent_heartbeat(payload: AgentHeartbeatRequest, token: str = Depends(require_agent_token)) -> PrinterAgentStatus:
     try:
-        return print_queue.heartbeat(payload)
+        return print_queue.heartbeat(payload, token)
     except PrintQueueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -482,11 +502,10 @@ def agent_heartbeat(payload: AgentHeartbeatRequest) -> PrinterAgentStatus:
 @app.post(
     f"{settings.api_prefix}/agente/trabajos/reclamar",
     response_model=None,
-    dependencies=[Depends(require_agent_token)],
 )
-def claim_agent_job(payload: dict[str, str]) -> AgentPrintJob | Response:
+def claim_agent_job(payload: AgentClaimRequest, token: str = Depends(require_agent_token)) -> AgentPrintJob | Response:
     try:
-        job = print_queue.claim(payload.get("agent_id", ""))
+        job = print_queue.claim(payload.agent_id, payload.installation_id, token)
     except PrintQueueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return job if job is not None else Response(status_code=204)
@@ -494,11 +513,10 @@ def claim_agent_job(payload: dict[str, str]) -> AgentPrintJob | Response:
 
 @app.post(
     f"{settings.api_prefix}/agente/trabajos/{{job_id}}/resultado",
-    dependencies=[Depends(require_agent_token)],
 )
-def complete_agent_job(job_id: int, payload: AgentJobResultRequest) -> dict[str, object]:
+def complete_agent_job(job_id: int, payload: AgentJobResultRequest, token: str = Depends(require_agent_token)) -> dict[str, object]:
     try:
-        return print_queue.complete(job_id, payload)
+        return print_queue.complete(job_id, payload, token)
     except PrintQueueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

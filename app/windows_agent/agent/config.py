@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
+from uuid import UUID, uuid4
 
 
 DEFAULT_CONFIG = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "ClinicLabelPrint" / "agent.env"
@@ -29,6 +30,20 @@ class AgentConfig:
     poll_seconds: float
     heartbeat_seconds: float
     request_timeout_seconds: float
+    state_dir: Path = DEFAULT_CONFIG.parent
+
+    def installation_id(self) -> str:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        path = self.state_dir / "installation.id"
+        try:
+            with path.open("x", encoding="ascii") as handle:
+                handle.write(str(uuid4()))
+        except FileExistsError:
+            pass
+        try:
+            return str(UUID(path.read_text(encoding="ascii").strip()))
+        except (ValueError, OSError) as exc:
+            raise RuntimeError("No se pudo leer la identidad de instalación del agente.") from exc
 
     @classmethod
     def load(cls, path: Path | None = None) -> "AgentConfig":
@@ -55,6 +70,7 @@ class AgentConfig:
             poll_seconds=poll_seconds,
             heartbeat_seconds=heartbeat_seconds,
             request_timeout_seconds=request_timeout_seconds,
+            state_dir=(path or DEFAULT_CONFIG).parent,
         )
 
 

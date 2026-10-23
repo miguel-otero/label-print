@@ -3808,7 +3808,7 @@ from (
     ('716982', 66.0000, 'EA-14192', date '2026-06-12', '1018'),
     ('716982', 89.0000, 'EA-14224', date '2026-06-17', '1018')
 ) as seed(referencia, entradas_inv, documento, fecha, bodega)
-where fecha >= (current_date - interval '2 months')::date;
+where fecha >= ((current_timestamp at time zone 'America/Bogota')::date - interval '3 months')::date;
 
 commit;
 -- END GENERATED INVENTORY SEED FROM dev/data

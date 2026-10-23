@@ -2,9 +2,10 @@
 
 Sistema interno para buscar productos e imprimir etiquetas en una impresora Zebra ZD230 usando ZPL.
 
-La aplicación usa tres contenedores y un agente de impresión Windows:
+La aplicación usa tres contenedores y un agente Windows por equipo de impresión.
+Consulte la [guía de actualización, retención y múltiples agentes](docs/operacion-retencion-agentes.md).
 
-- Frontend: React + TanStack Router/Start + Vite.
+- Frontend: React + React Router, compilado con Vite y servido por Nginx en producción.
 - Backend: FastAPI.
 - Base de datos: PostgreSQL.
 
@@ -104,17 +105,14 @@ dev/data/inv-30-06-2026.csv
 dev/data/movimientos_entradas.csv
 ```
 
-`inventory` carga las 1.689 filas del snapshot del 30 de junio de 2026. `inventory_entries` carga 1.107 movimientos y aplica en PostgreSQL el mismo horizonte dinamico de dos meses, por lo que una inicializacion futura omitira automaticamente movimientos vencidos.
+`inventory` carga las 1.689 filas del snapshot del 30 de junio de 2026. `inventory_entries` contiene 1.107 movimientos de ejemplo y aplica al inicializar un horizonte dinámico de tres meses. No vuelva a ejecutar el seed sobre una base existente.
 
 Los archivos de `/docker-entrypoint-initdb.d/` solo se ejecutan automaticamente al crear un volumen PostgreSQL vacio. Un volumen existente no vuelve a ejecutar el seed al reiniciar el contenedor.
 
 ## Configuracion
 
-Frontend:
-
-```env
-VITE_API_URL=http://localhost:8080/api
-```
+El frontend utiliza `/api` en el mismo origen. Nginx lo reenvía al backend.
+Para desarrollo, usar `start.sh --dev` o `start.ps1 -Dev`; Vite incluye el proxy.
 
 Backend:
 
@@ -154,7 +152,7 @@ Para ejecutar Compose directamente, indica el archivo porque no se encuentra en 
 docker compose --env-file .\conn\.env up -d
 ```
 
-Docker Compose reemplaza internamente el host PostgreSQL por `clinic_db`. El token del agente debe coincidir con el instalado en Windows y nunca debe confirmarse en Git.
+Docker Compose reemplaza internamente el host PostgreSQL por `clinic_db`. Los agentes nuevos se registran y descargan en Configuración, con credenciales individuales. Las variables del agente único permanecen durante la migración; nunca deben confirmarse secretos en Git.
 
 ## Sincronizacion de inventario
 
@@ -163,7 +161,7 @@ El backend consulta Microsoft SQL Server usando:
 - `scripts/consulta_inventario.sql`: reemplazo transaccional completo de `inventory`.
 - `scripts/consulta_entradas.sql`: sincronizacion incremental de `inventory_entries`.
 
-`inventory_entries` conserva como maximo los dos meses calendario definidos por `CLINIC_INVENTORY_ENTRIES_RETENTION_MONTHS`. Se permite reducir el valor a un mes, pero la configuracion rechaza valores superiores a dos. Cada ejecucion elimina registros anteriores al corte, incluso si SQL Server no esta disponible, y la consulta externa nunca solicita fechas mas antiguas.
+`CLINIC_DATA_RETENTION_MONTHS=3` unifica la retención de entradas e impresiones. La limpieza se ejecuta cada hora, independientemente de la sincronización, cuando `CLINIC_RETENTION_ENABLED=true`. Revise primero su simulación en Configuración. Se conservan catálogo, existencias e imágenes; las impresiones activas terminan antes de eliminarse.
 
 En la primera carga se consulta desde el corte de retencion. En las siguientes, se parte de la fecha mas reciente guardada menos `CLINIC_EXTERNAL_SYNC_LOOKBACK_DAYS`, sin sobrepasar el corte. Esa ventana se reemplaza transaccionalmente para reflejar movimientos nuevos, corregidos o anulados sin truncar toda la tabla.
 

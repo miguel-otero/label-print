@@ -16,6 +16,9 @@ env:
     ]
 
 jobs:
+  windows-agent:
+    uses: ./.github/workflows/windows-agent-build.yml
+
   setup-env:
     name: setup-env
     runs-on: ubuntu-latest
@@ -68,10 +71,28 @@ jobs:
   update-zip:
     name: update-zip
     runs-on: ubuntu-latest
-    needs: setup-env
+    needs: [setup-env, windows-agent]
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download installer from this build
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-agent-installer
+          path: artifacts/windows-agent
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Stage verified installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          installers=(artifacts/windows-agent/*-x64.exe)
+          [[ ${#installers[@]} -eq 1 ]]
+          python scripts/prepare_agent_release.py --installer "${installers[0]}"
 
       - name: Download conn/ artifact
         uses: actions/download-artifact@v4

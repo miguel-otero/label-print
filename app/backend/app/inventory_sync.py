@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from calendar import monthrange
 from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -14,6 +13,8 @@ from psycopg.rows import dict_row
 import pytds
 from sshtunnel import SSHTunnelForwarder
 
+from app.retention import retention_cutoff, subtract_calendar_months
+from app.database import queue_transaction
 from app.schemas import InventorySyncResult
 from app.settings import Settings
 
@@ -31,14 +32,6 @@ PRODUCT_COLUMNS = (
     "linea",
     "codigo_propio",
 )
-
-
-def subtract_calendar_months(value: date, months: int) -> date:
-    month_index = value.year * 12 + value.month - 1 - months
-    year, zero_based_month = divmod(month_index, 12)
-    month = zero_based_month + 1
-    day = min(value.day, monthrange(year, month)[1])
-    return date(year, month, day)
 
 
 class InventorySyncError(RuntimeError):
@@ -77,7 +70,6 @@ class InventorySyncService:
             try:
                 if self.settings.use_postgres:
                     self._ensure_inventory_entries_schema()
-                    self._purge_expired_inventory_entries(retention_cutoff)
 
                 if not self.settings.external_database_configured:
                     result = InventorySyncResult(
@@ -215,18 +207,7 @@ class InventorySyncService:
                 return list(cursor.fetchall())
 
     def _retention_cutoff(self) -> date:
-        return subtract_calendar_months(
-            date.today(),
-            self.settings.inventory_entries_retention_months,
-        )
-
-    def _purge_expired_inventory_entries(self, retention_cutoff: date) -> None:
-        table = sql.Identifier(self.settings.inventory_entries_table)
-        with self._postgres_connect() as conn:
-            conn.execute(
-                sql.SQL("delete from {} where fecha < %s").format(table),
-                (retention_cutoff,),
-            )
+        return retention_cutoff(self.settings).date()
 
     def _ensure_inventory_entries_schema(self) -> None:
         table = sql.Identifier(self.settings.inventory_entries_table)
@@ -245,6 +226,10 @@ class InventorySyncService:
     def _get_entries_since_date(self, retention_cutoff: date) -> date:
         table = sql.Identifier(self.settings.inventory_entries_table)
         with self._postgres_connect() as conn:
+            conn.execute("create table if not exists maintenance_state (name text primary key, value jsonb not null)")
+            marker = conn.execute("select value from maintenance_state where name = 'entries_backfill'").fetchone()
+            if marker is None or int(marker[0].get("months", 0)) < self.settings.data_retention_months:
+                return retention_cutoff
             latest = conn.execute(
                 sql.SQL("select max(fecha) from {}").format(table)
             ).fetchone()[0]
@@ -287,11 +272,12 @@ class InventorySyncService:
 
         with self._postgres_connect() as conn:
             with conn.transaction():
+                queue_transaction(conn)
                 conn.execute(
                     sql.SQL(
-                        "delete from {} where fecha < %s or fecha >= %s"
+                        "delete from {} where fecha >= %s"
                     ).format(table),
-                    (retention_cutoff, since_date),
+                    (since_date,),
                 )
                 if values:
                     with conn.cursor() as cursor:
@@ -306,6 +292,10 @@ class InventorySyncService:
                             ).format(table),
                             values,
                         )
+                conn.execute("""insert into maintenance_state(name, value)
+                    values ('entries_backfill', jsonb_build_object('months', %s::integer))
+                    on conflict(name) do update set value = excluded.value""",
+                    (self.settings.data_retention_months,))
 
     def _replace_products(self, rows: list[dict[str, Any]]) -> None:
         table = sql.Identifier(self.settings.products_table)

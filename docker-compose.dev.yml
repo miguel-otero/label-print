@@ -1,0 +1,9 @@
+services:
+  clinic_frontend:
+    build:
+      target: dev
+    volumes:
+      - ./app/frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_PROXY_TARGET: http://clinic_backend:80

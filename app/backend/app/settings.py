@@ -36,7 +36,11 @@ class Settings(BaseSettings):
     external_sync_enabled: bool = True
     external_sync_interval_minutes: int = Field(default=60, ge=1)
     external_sync_lookback_days: int = Field(default=1, ge=0)
-    inventory_entries_retention_months: int = Field(default=2, ge=1, le=2)
+    data_retention_months: int = Field(default=3, ge=1, le=3)
+    retention_enabled: bool = False
+    retention_interval_minutes: int = Field(default=60, ge=1)
+    retention_batch_size: int = Field(default=500, ge=1, le=5000)
+    retention_timezone: str = "America/Bogota"
     sync_query_dir: str = "../../scripts"
 
     warehouse_app_ssh_host: str = ""
@@ -54,6 +58,13 @@ class Settings(BaseSettings):
     print_agent_token: str = ""
     print_agent_id: str = "windows-primary"
     print_agent_stale_seconds: int = Field(default=120, ge=30)
+    agent_admin_key: str = ""
+    agent_token_secret: str = ""
+    agent_public_api_url: str = ""
+    agent_release_dir: str = "../../storage/agent-release"
+    agent_poll_seconds: int = Field(default=1, ge=1)
+    agent_heartbeat_seconds: int = Field(default=10, ge=1, le=20)
+    agent_request_timeout_seconds: int = Field(default=15, ge=1, le=60)
 
     model_config = SettingsConfigDict(
         env_prefix="CLINIC_",

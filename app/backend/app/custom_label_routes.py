@@ -32,6 +32,6 @@ def create_custom_label_router(service: CustomLabelService) -> APIRouter:
         payload: CustomLabelPrintRequest,
         user: str = Header(default="operador1", alias="X-User"),
     ) -> PrintResponse:
-        return service.print_image(payload.imagen_id, payload.cantidad, user)
+        return service.print_image(payload.imagen_id, payload.cantidad, user, payload.target_agent_id)
 
     return router

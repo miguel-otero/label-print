@@ -2,6 +2,7 @@ param(
     [ValidateSet("Docker")]
     [string]$Mode = "Docker",
     [switch]$Build,
+    [switch]$Dev,
     [switch]$Logs
 )
 
@@ -33,7 +34,9 @@ $composeExitCode = $LASTEXITCODE
 $ErrorActionPreference = $previousPreference
 if ($composeExitCode -ne 0) { throw "Docker Compose plugin is required (docker compose)." }
 
-$arguments = @("compose", "--env-file", $envFile, "up", "-d")
+$compose = @("compose", "--env-file", $envFile, "-f", "docker-compose.yml")
+if ($Dev) { $compose += @("-f", "docker-compose.dev.yml") }
+$arguments = $compose + @("up", "-d")
 if ($Build) {
     $arguments += "--build"
 }
@@ -42,7 +45,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Docker Compose could not start the application."
 }
 
-docker compose --env-file $envFile ps
+docker @compose ps
 if ($LASTEXITCODE -ne 0) { throw "Docker Compose could not read the application status." }
 Write-Host ""
 Write-Host "Frontend: http://localhost:8083"
@@ -52,5 +55,5 @@ Write-Host ""
 Write-Host "Printing is handled by the ClinicLabelPrintAgent Windows service."
 
 if ($Logs) {
-    docker compose --env-file $envFile logs -f
+    docker @compose logs -f
 }

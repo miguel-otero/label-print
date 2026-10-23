@@ -19,6 +19,11 @@ done
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd -- "$repo_root"
 command -v zip >/dev/null || { echo 'Falta zip. Use startup.sh -t zip.' >&2; exit 1; }
+if command -v python3 >/dev/null && python3 --version >/dev/null 2>&1; then
+    python3 scripts/prepare_agent_release.py --verify
+else
+    python scripts/prepare_agent_release.py --verify
+fi
 if [[ "$upload" == 1 ]]; then command -v gsutil >/dev/null || { echo 'Falta gsutil. Instale Google Cloud CLI y autentiquese.' >&2; exit 1; }; fi
 paths=()
 while IFS= read -r entry || [[ -n "$entry" ]]; do

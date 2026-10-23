@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -45,6 +46,15 @@ class ScriptTests(unittest.TestCase):
         (self.root / "storage/label-images").mkdir()
         (self.root / "storage/label-images/logo.png").write_bytes(b"test-logo")
         (self.root / "packaging/installer.iss").write_text("fixture", encoding="utf-8")
+        release = self.root / "storage/agent-release"
+        release.mkdir()
+        filename = "ClinicLabelPrintAgent-Setup-0.3.0-x64.exe"
+        binary = b"isolated-installer-fixture"
+        digest = hashlib.sha256(binary).hexdigest()
+        (release / filename).write_bytes(binary)
+        (release / f"{filename}.sha256").write_text(f"{digest}  {filename}\n")
+        (release / "manifest.json").write_text(json.dumps(
+            {"version": "0.3.0", "filename": filename, "sha256": digest}))
         for directory in ("node_modules", ".venv", "build", "dist", "__pycache__", "example.egg-info"):
             target = self.root / "app" / directory
             target.mkdir()
@@ -160,6 +170,8 @@ class ScriptTests(unittest.TestCase):
             for name in ("conn/.env", "storage/label-images/logo.png", "packaging/installer.iss", "docker-compose.yml", ".gitignore"):
                 self.assertIn(name, names)
             self.assertFalse(any(name.endswith("excluded.txt") for name in names))
+            self.assertIn("storage/agent-release/manifest.json", names)
+            self.assertIn("storage/agent-release/ClinicLabelPrintAgent-Setup-0.3.0-x64.exe", names)
         (self.root / "storage/label-images/logo.png").unlink()
         self.ps(f"& {ps_literal(script)} -NoUpload")
         with zipfile.ZipFile(archive) as bundle:

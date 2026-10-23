@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+from app.retention import retention_cutoff
 import unicodedata
 from datetime import datetime, timezone
 from typing import Literal, Protocol
@@ -48,6 +50,7 @@ class Repository(Protocol):
         status: PrintStatus,
         message: str | None,
         user: str,
+        connection=None,
     ) -> PrintHistory: ...
     def get_history(self) -> list[PrintHistory]: ...
 
@@ -141,6 +144,7 @@ class MockRepository:
         status: PrintStatus,
         message: str | None,
         user: str,
+        connection=None,
     ) -> PrintHistory:
         item = PrintHistory(
             id=(max((entry.id for entry in self._history), default=0) + 1),
@@ -415,6 +419,7 @@ class PostgresRepository:
         status: PrintStatus,
         message: str | None,
         user: str,
+        connection=None,
     ) -> PrintHistory:
         payload = {
             "timestamp": datetime.now(timezone.utc),
@@ -427,7 +432,7 @@ class PostgresRepository:
             "message": message,
             "prints_barcode": product.own_code,
         }
-        with self._connect() as conn:
+        with (nullcontext(connection) if connection is not None else self._connect()) as conn:
             row = conn.execute(
                 sql.SQL(
                     """
@@ -453,13 +458,16 @@ class PostgresRepository:
                            history.product_description, history.format, history.quantity,
                            history.status, history.message, history.kind,
                            history.image_id, history.image_name, history.prints_barcode,
-                           (select max(jobs.id) from print_jobs jobs
-                            where jobs.history_id = history.id) as job_id
+                           job.id as job_id, job.target_agent_id, job.target_name, job.printer_name
                     from {table} history
+                    left join lateral (select * from print_jobs where history_id = history.id
+                                       order by id desc limit 1) job on true
+                    where history.timestamp >= %s
                     order by timestamp desc
                     limit 200
                     """
-                ).format(table=sql.Identifier(self.settings.history_table))
+                ).format(table=sql.Identifier(self.settings.history_table)),
+                (retention_cutoff(self.settings),),
             ).fetchall()
         return [PrintHistory.model_validate(row) for row in rows]
 

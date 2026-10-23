@@ -6,7 +6,7 @@ import { Label } from "@/shared/ui/label";
 
 export function PrinterCard({
   printerName,
-  onPrinterNameChange,
+  hasDestination,
   testing,
   printingTest,
   onTest,
@@ -21,15 +21,10 @@ export function PrinterCard({
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="printer">Nombre de impresora</Label>
-          <Input
-            id="printer"
-            value={printerName}
-            onChange={(e) => onPrinterNameChange(e.target.value)}
-            readOnly
-          />
+          <Input id="printer" value={printerName} readOnly />
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={onTest} disabled={testing}>
+          <Button onClick={onTest} disabled={testing || !hasDestination}>
             {testing ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -37,7 +32,11 @@ export function PrinterCard({
             )}
             Probar impresora
           </Button>
-          <Button variant="outline" onClick={onTestLabel} disabled={printingTest}>
+          <Button
+            variant="outline"
+            onClick={onTestLabel}
+            disabled={printingTest || !hasDestination}
+          >
             {printingTest ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (

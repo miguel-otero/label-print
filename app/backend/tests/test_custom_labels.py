@@ -142,7 +142,7 @@ class CustomLabelIntegrationTests(unittest.TestCase):
                 product_code text not null, product_description text not null,
                 format text not null, quantity integer not null, status text not null, message text
             )''')
-            conn.execute("create table print_batches (id bigint primary key, status text, message text, printed_labels integer, failed_labels integer)")
+            conn.execute("create table print_batches (id bigint primary key, timestamp timestamptz not null default now(), status text, message text, printed_labels integer, failed_labels integer)")
             conn.execute("create table print_batch_items (id bigint primary key, status text)")
         self.queue.ensure_schema()
         self.service = CustomLabelService(settings, self.queue)
@@ -223,7 +223,7 @@ class CustomLabelIntegrationTests(unittest.TestCase):
         stale = self.enqueue(image["id"], 1)
         self.queue.claim("test-custom-agent")
         with self.queue._connect() as conn:
-            conn.execute("update print_jobs set claimed_at = now() - interval '10 minutes' where id = %s", (stale["job_id"],))
+            conn.execute("update print_jobs set claimed_at = now() - interval '10 minutes', activity_at = now() - interval '10 minutes' where id = %s", (stale["job_id"],))
         self.queue.mark_stale_jobs()
         with self.queue._connect() as conn:
             history = conn.execute("select status from print_history where id = %s", (stale["history_id"],)).fetchone()
