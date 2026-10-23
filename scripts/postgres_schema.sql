@@ -37,7 +37,7 @@ create table if not exists inventory (
 );
 
 comment on table inventory_entries is
-  'Entradas incrementales con retencion maxima de dos meses calendario.';
+  'Entradas incrementales con retencion maxima de tres meses calendario.';
 
 alter table products drop constraint if exists products_referencia_key;
 alter table products drop constraint if exists products_codigo_barra_key;

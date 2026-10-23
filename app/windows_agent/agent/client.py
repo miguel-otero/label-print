@@ -9,6 +9,7 @@ import urllib.request
 
 from agent.config import AgentConfig
 from agent.spooler import WindowsSpooler
+from agent import __version__
 
 
 class AgentClient:
@@ -17,6 +18,8 @@ class AgentClient:
         self.stop_event = stop_event
         self.spooler = WindowsSpooler(config.printer_name)
         self.last_heartbeat = 0.0
+        self.installation_id = config.installation_id()
+        self.current_job_id = None
 
     def run(self) -> None:
         logging.info("Agente iniciado: %s -> %s", self.config.agent_id, self.config.server_url)
@@ -31,14 +34,15 @@ class AgentClient:
                 logging.exception("Error en el ciclo del agente")
             self.stop_event.wait(self.config.poll_seconds)
 
-    def _heartbeat_if_due(self) -> None:
+    def _heartbeat_if_due(self, *, force: bool = False) -> None:
         now = time.monotonic()
-        if now - self.last_heartbeat < self.config.heartbeat_seconds:
+        if not force and now - self.last_heartbeat < self.config.heartbeat_seconds:
             return
         printer_ok = True
         message = None
         try:
-            self.spooler.test()
+            if self.current_job_id is None:
+                self.spooler.test()
         except Exception as exc:
             printer_ok = False
             message = str(exc)
@@ -50,15 +54,40 @@ class AgentClient:
                 "printer_name": self.config.printer_name,
                 "printer_ok": printer_ok,
                 "message": message,
+                "version": __version__,
+                "current_job_id": self.current_job_id,
             },
         )
         self.last_heartbeat = now
 
     def _process(self, job: dict) -> None:
+        self.current_job_id = job["id"]
+        heartbeat_stop = threading.Event()
+
+        def keep_alive():
+            while not heartbeat_stop.is_set():
+                try:
+                    self._heartbeat_if_due(force=True)
+                except Exception:
+                    logging.exception("No se pudo renovar la actividad del trabajo")
+                heartbeat_stop.wait(self.config.heartbeat_seconds)
+
+        heartbeat = threading.Thread(target=keep_alive, name="print-heartbeat", daemon=True)
+        heartbeat.start()
+        try:
+            self._print_documents(job)
+        finally:
+            heartbeat_stop.set()
+            heartbeat.join(timeout=self.config.request_timeout_seconds + 1)
+            self.current_job_id = None
+
+    def _print_documents(self, job: dict) -> None:
         logging.info("Procesando trabajo %s (%s)", job["id"], job["kind"])
         results = []
         for document in job["documents"]:
             try:
+                if job["printer_name"] != self.config.printer_name:
+                    raise RuntimeError("La impresora del trabajo no coincide con la configuración local.")
                 if job["kind"] == "printer_test":
                     self.spooler.test()
                 else:
@@ -74,6 +103,8 @@ class AgentClient:
         )
 
     def _request(self, method: str, path: str, payload: dict | None = None):
+        if payload is not None:
+            payload = {**payload, "installation_id": self.installation_id}
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         request = urllib.request.Request(
             f"{self.config.server_url}{path}",

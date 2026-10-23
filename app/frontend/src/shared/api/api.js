@@ -1,4 +1,41 @@
-export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api";
+import { requireSelectedAgent, updateAgents } from "@/shared/agents/selection";
+
+export const API_BASE = "/api";
+
+export async function refreshAgents() {
+  const agents = await apiRequest("/agentes");
+  updateAgents(agents);
+  return agents;
+}
+
+export const getMaintenanceStatus = () => apiRequest("/mantenimiento/estado");
+export const getAgentRelease = () => apiRequest("/agentes/paquete/estado");
+export const diagnoseRetention = (key) =>
+  apiRequest("/admin/mantenimiento/simulacion", { headers: { "X-Admin-Key": key } });
+
+export function manageAgent(action, id, payload, key) {
+  const path =
+    action === "create"
+      ? "/admin/agentes"
+      : `/admin/agentes/${encodeURIComponent(id)}${action === "reset" ? "/restablecer" : ""}`;
+  return apiRequest(path, {
+    method: action === "update" ? "PATCH" : "POST",
+    headers: { "X-Admin-Key": key },
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
+}
+
+export function downloadAgent(id, key) {
+  return apiRequest(
+    `/admin/agentes/${encodeURIComponent(id)}/paquete`,
+    {
+      method: "POST",
+      headers: { "X-Admin-Key": key },
+      cache: "no-store",
+    },
+    "blob",
+  );
+}
 
 async function apiRequest(path, init, responseType = "json") {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -52,7 +89,11 @@ export function getLabelImagePreview(id, signal) {
 export function printCustomLabel(imageId, quantity) {
   return apiRequest("/etiqueta-personalizada/imprimir", {
     method: "POST",
-    body: JSON.stringify({ imagen_id: imageId, cantidad: quantity }),
+    body: JSON.stringify({
+      imagen_id: imageId,
+      cantidad: quantity,
+      target_agent_id: requireSelectedAgent(),
+    }),
   });
 }
 
@@ -124,7 +165,7 @@ export async function getFormatPreview(code) {
 export async function printLabel(payload) {
   return apiRequest("/imprimir", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, target_agent_id: requireSelectedAgent() }),
   });
 }
 
@@ -215,14 +256,14 @@ export async function saveInventoryPrintSettings(payload) {
 export async function printInventoryBatch(payload) {
   return apiRequest("/imprimir-inventario", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, target_agent_id: requireSelectedAgent() }),
   });
 }
 
 export async function printInventoryEntryBatch(payload) {
   return apiRequest("/imprimir-inventario/entrada", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, target_agent_id: requireSelectedAgent() }),
   });
 }
 
@@ -233,17 +274,21 @@ export async function syncInventory() {
 export async function testPrinter() {
   return apiRequest("/impresora/test", {
     method: "POST",
+    body: JSON.stringify({ target_agent_id: requireSelectedAgent() }),
   });
 }
 // POST /impresora/test/etiqueta
 export async function printTestLabel() {
   return apiRequest("/impresora/test/etiqueta", {
     method: "POST",
+    body: JSON.stringify({ target_agent_id: requireSelectedAgent() }),
   });
 }
 
 export async function getPrinterStatus() {
-  return apiRequest("/impresora/status");
+  return apiRequest(
+    `/impresora/status?target_agent_id=${encodeURIComponent(requireSelectedAgent())}`,
+  );
 }
 
 export async function retryPrintJob(jobId) {

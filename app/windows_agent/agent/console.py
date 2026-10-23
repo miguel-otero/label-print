@@ -6,6 +6,7 @@ from pathlib import Path
 from agent.client import AgentClient
 from agent.config import AgentConfig
 from agent.spooler import WindowsSpooler
+from agent.instance import single_instance
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,7 +34,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     stop_event = threading.Event()
     try:
-        AgentClient(AgentConfig.load(), stop_event).run()
+        with single_instance():
+            AgentClient(AgentConfig.load(), stop_event).run()
     except KeyboardInterrupt:
         stop_event.set()
 

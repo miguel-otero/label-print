@@ -42,6 +42,16 @@ export function IndividualTable({ items, loading, onSelect }) {
       render: (item) => item.quantity,
     },
     {
+      key: "destination",
+      header: "Equipo / Impresora",
+      render: (item) => (
+        <div className="text-xs">
+          <div>{item.target_name || "Sin dato"}</div>
+          <div className="text-muted-foreground">{item.printer_name}</div>
+        </div>
+      ),
+    },
+    {
       key: "status",
       header: "Estado",
       headClassName: "w-28 text-center",

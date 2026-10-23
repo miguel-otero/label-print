@@ -40,6 +40,7 @@ class LabelFormatPayload(BaseModel):
 
 
 class PrintRequest(BaseModel):
+    target_agent_id: str | None = None
     formato: str
     producto_id: int
     cantidad: int = Field(ge=1)
@@ -63,6 +64,9 @@ class PrinterTestResponse(BaseModel):
 
 
 class PrintHistory(BaseModel):
+    target_agent_id: str | None = None
+    target_name: str | None = None
+    printer_name: str | None = None
     id: int
     job_id: int | None = None
     timestamp: datetime
@@ -88,6 +92,7 @@ class LabelImage(BaseModel):
 
 
 class CustomLabelPrintRequest(BaseModel):
+    target_agent_id: str | None = None
     imagen_id: int = Field(gt=0, strict=True)
     cantidad: int = Field(ge=1, le=400, strict=True)
 
@@ -153,6 +158,7 @@ class InventoryBatchItemRequest(BaseModel):
 
 
 class InventoryBatchPrintRequest(BaseModel):
+    target_agent_id: str | None = None
     format: str
     warehouse: str
     items: list[InventoryBatchItemRequest] = Field(min_length=1)
@@ -165,6 +171,7 @@ class InventoryEntryBatchItemRequest(BaseModel):
 
 
 class InventoryEntryBatchPrintRequest(BaseModel):
+    target_agent_id: str | None = None
     format: str
     warehouse: str
     document: str
@@ -198,6 +205,9 @@ class InventoryBatchPrintResponse(BaseModel):
 
 
 class PrintBatchHistory(BaseModel):
+    target_agent_id: str | None = None
+    target_name: str | None = None
+    printer_name: str | None = None
     id: int
     job_id: int | None = None
     timestamp: datetime
@@ -217,6 +227,9 @@ class PrintBatchHistory(BaseModel):
 
 class AgentHeartbeatRequest(BaseModel):
     agent_id: str
+    installation_id: str | None = None
+    version: str | None = Field(default=None, max_length=40)
+    current_job_id: int | None = None
     printer_name: str
     printer_ok: bool
     message: str | None = None
@@ -224,6 +237,11 @@ class AgentHeartbeatRequest(BaseModel):
 
 class PrinterAgentStatus(BaseModel):
     agent_id: str
+    display_name: str = ""
+    enabled: bool = True
+    version: str | None = None
+    paired: bool = False
+    legacy_auth: bool = False
     printer_name: str
     online: bool
     printer_ok: bool
@@ -252,4 +270,26 @@ class AgentDocumentResult(BaseModel):
 
 class AgentJobResultRequest(BaseModel):
     agent_id: str
+    installation_id: str | None = None
     documents: list[AgentDocumentResult] = Field(min_length=1)
+
+
+class AgentRegistration(BaseModel):
+    display_name: str = Field(min_length=1, max_length=160)
+    printer_name: str = Field(min_length=1, max_length=160)
+    enabled: bool = True
+
+
+class AgentUpdate(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=160)
+    printer_name: str | None = Field(default=None, min_length=1, max_length=160)
+    enabled: bool | None = None
+
+
+class AgentClaimRequest(BaseModel):
+    agent_id: str
+    installation_id: str | None = None
+
+
+class PrinterTargetRequest(BaseModel):
+    target_agent_id: str | None = None

@@ -10,3 +10,4 @@ commands.md
 .gitignore
 .gitattributes
 docker-compose.yml
+docker-compose.dev.yml

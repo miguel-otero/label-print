@@ -14,12 +14,13 @@ El equipo destino no necesita el repositorio, Python ni PowerShell. Distribuya
 juntos:
 
 ```text
-ClinicLabelPrintAgent-Setup-0.2.0-x64.exe
+ClinicLabelPrintAgent-Setup-0.3.0-x64.exe
 agent.env
-ClinicLabelPrintAgent-Setup-0.2.0-x64.exe.sha256
+ClinicLabelPrintAgent-Setup-0.3.0-x64.exe.sha256
 ```
 
-Prepare `agent.env` a partir de `agent.env.example`. Al abrir el instalador
+Descargue el ZIP de esta estación desde Configuración usando la clave administrativa.
+Su `agent.env` contiene los valores actuales del servidor. Al abrir el instalador
 como administrador, este detecta el archivo ubicado a su lado o permite
 seleccionarlo. El programa se instala para todos los usuarios en
 `C:\Program Files\ClinicLabelPrintAgent`; la configuracion y los logs quedan
@@ -28,7 +29,7 @@ en `C:\ProgramData\ClinicLabelPrint`.
 Instalacion automatizada:
 
 ```powershell
-ClinicLabelPrintAgent-Setup-0.2.0-x64.exe `
+ClinicLabelPrintAgent-Setup-0.3.0-x64.exe `
   /VERYSILENT /SUPPRESSMSGBOXES /NORESTART `
   /CONFIG="C:\Distribucion\agent.env"
 ```
@@ -42,7 +43,8 @@ reciben otro archivo. La desinstalacion conserva configuracion y logs.
 - Windows 10 u 11 x64.
 - Cola Zebra local instalada para todo el equipo y visible para `LocalSystem`.
 - Acceso HTTP/HTTPS desde la estacion a la API.
-- El mismo `CLINIC_PRINT_AGENT_TOKEN` configurado en servidor y agente.
+- La identidad y credencial individual incluidas en el ZIP de la estación.
+- Un único agente por equipo. Cada equipo tiene su propia impresora.
 
 ## Compilacion y publicacion
 
@@ -56,11 +58,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 
 El resultado queda en `artifacts\windows-agent`. Los pull requests que
 modifican el agente validan el instalador. Un tag que coincida con la version,
-por ejemplo `agent-v0.2.0`, crea una GitHub Release con el instalador y su
+por ejemplo `agent-v0.3.0`, crea una GitHub Release con el instalador y su
 SHA-256. Mientras no exista certificado de firma de codigo, Windows mostrara el
 editor como desconocido.
 
 ## Diagnostico y migracion
+
+Al actualizar desde 0.2.0, importe el `agent.env` nuevo del ZIP antes de habilitar
+otras estaciones. La identidad local se conserva en `installation.id` en ProgramData;
+copiar el ZIP a otro equipo será rechazado hasta restablecer la estación desde
+Configuración. El servicio y la consola utilizan exclusión de ejecución local.
+Durante trabajos largos el heartbeat se mantiene activo en segundo plano.
 
 Los scripts anteriores se conservan temporalmente para diagnostico y migracion:
 

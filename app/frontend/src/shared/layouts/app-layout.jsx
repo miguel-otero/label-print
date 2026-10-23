@@ -7,12 +7,15 @@ import { Button } from "@/shared/ui/button";
 import { useTheme } from "@/shared/providers/theme";
 import { Badge } from "@/shared/ui/badge";
 import { cn } from "@/shared/utils/utils";
-import { getPrinterStatus, pingBackend } from "@/shared/api/api";
+import { refreshAgents, pingBackend } from "@/shared/api/api";
+import { useAgents } from "@/shared/agents/use-agents";
+import { agentLoadFailed } from "@/shared/agents/selection";
+import { AgentSelector } from "@/shared/components/agent-selector";
 
 export function AppLayout({ title, subtitle, actions, children }) {
   const { theme, toggle } = useTheme();
   const [backendOnline, setBackendOnline] = useState(null);
-  const [agentStatus, setAgentStatus] = useState(null);
+  const { selectedAgent: agentStatus } = useAgents();
   useEffect(() => {
     let active = true;
     async function checkSystem() {
@@ -20,14 +23,12 @@ export function AppLayout({ title, subtitle, actions, children }) {
       if (!active) return;
       setBackendOnline(ok);
       if (!ok) {
-        setAgentStatus(null);
         return;
       }
       try {
-        const status = await getPrinterStatus();
-        if (active) setAgentStatus(status);
-      } catch {
-        if (active) setAgentStatus({ online: false, printer_ok: false });
+        await refreshAgents();
+      } catch (error) {
+        if (active) agentLoadFailed(error);
       }
     }
     checkSystem();
@@ -51,29 +52,29 @@ export function AppLayout({ title, subtitle, actions, children }) {
             icon: WifiOff,
             className: "border-destructive/40 text-destructive",
           }
-        : agentStatus === null
+        : !agentStatus
           ? {
-              label: "Verificando sistema",
-              icon: LoaderCircle,
+              label: "Seleccione impresora",
+              icon: Printer,
               className: "border-warning/50 text-warning",
             }
-        : !agentStatus?.online
-          ? {
-              label: "Agente desconectado",
-              icon: WifiOff,
-              className: "border-destructive/40 text-destructive",
-            }
-          : !agentStatus.printer_ok
+          : !agentStatus?.online
             ? {
-                label: "Impresora offline",
-                icon: Printer,
+                label: "Agente desconectado",
+                icon: WifiOff,
                 className: "border-destructive/40 text-destructive",
               }
-            : {
-                label: "Listo para imprimir",
-                icon: CircleCheck,
-                className: "border-success/40 text-success",
-              };
+            : !agentStatus.printer_ok
+              ? {
+                  label: "Impresora offline",
+                  icon: Printer,
+                  className: "border-destructive/40 text-destructive",
+                }
+              : {
+                  label: "Listo para imprimir",
+                  icon: CircleCheck,
+                  className: "border-success/40 text-success",
+                };
   const SystemStatusIcon = systemStatus.icon;
   return (
     <SidebarProvider>
@@ -114,6 +115,7 @@ export function AppLayout({ title, subtitle, actions, children }) {
               </Button>
             </div>
           </header>
+          <AgentSelector />
           <main className="min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6">{children}</main>
         </div>
         <Toaster richColors position="top-right" />

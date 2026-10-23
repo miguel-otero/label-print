@@ -25,9 +25,7 @@ export function BatchTable({ items, loading, onSelect }) {
       headClassName: "w-40 text-center",
       cellClassName: "text-center text-xs",
       render: (item) =>
-        item.source === "inventory_entry"
-          ? `Entrada ${item.source_document ?? ""}`
-          : "Inventario",
+        item.source === "inventory_entry" ? `Entrada ${item.source_document ?? ""}` : "Inventario",
     },
     {
       key: "items",
@@ -49,6 +47,16 @@ export function BatchTable({ items, loading, onSelect }) {
       headClassName: "w-28 text-center",
       cellClassName: "text-center",
       render: (item) => `${item.printed_labels}/${item.requested_labels}`,
+    },
+    {
+      key: "destination",
+      header: "Equipo / Impresora",
+      render: (item) => (
+        <div className="text-xs">
+          <div>{item.target_name || "Sin dato"}</div>
+          <div className="text-muted-foreground">{item.printer_name}</div>
+        </div>
+      ),
     },
     {
       key: "status",

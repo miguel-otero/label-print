@@ -42,6 +42,9 @@ conn/*.env
 /artifacts/
 /storage/label-images/*
 !/storage/label-images/.gitkeep
+/storage/agent-release/*
+!/storage/agent-release/.gitkeep
 
 # Agentes
 #AGENTS.md
+/docs

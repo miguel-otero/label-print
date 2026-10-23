@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 from contextlib import nullcontext
-from datetime import datetime, timezone
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg import sql
 
+from app.agent_registry import AgentRegistry
+from app.database import queue_transaction
 from app.printer import QueuedZplDocument
+from app.retention import retention_cutoff
 from app.schemas import (
     AgentHeartbeatRequest,
     AgentJobResultRequest,
@@ -25,6 +28,7 @@ class PrintQueueError(RuntimeError):
 class PrintQueueService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self.agents = AgentRegistry(settings)
 
     def _connect(self) -> psycopg.Connection:
         return psycopg.connect(
@@ -94,6 +98,27 @@ class PrintQueueService:
                 """
             )
             conn.execute("create index if not exists print_jobs_status_idx on print_jobs (status, id)")
+            self.agents.ensure_schema(conn)
+            conn.execute("""
+                alter table print_jobs add column if not exists target_agent_id text;
+                alter table print_jobs add column if not exists target_name text;
+                alter table print_jobs add column if not exists installation_id text;
+                alter table print_jobs add column if not exists activity_at timestamptz;
+                alter table print_jobs add column if not exists retention_at timestamptz;
+                alter table print_jobs add column if not exists retry_of bigint;
+                create index if not exists print_jobs_target_idx on print_jobs(target_agent_id, status, id);
+                create index if not exists print_jobs_history_idx on print_jobs(history_id);
+                create index if not exists print_jobs_batch_idx on print_jobs(batch_id);
+                create index if not exists print_jobs_retry_idx on print_jobs(retry_of);
+            """)
+            conn.execute("""update print_jobs set target_agent_id = %s, target_name = %s
+                where target_agent_id is null""", (self.settings.print_agent_id, self.settings.print_agent_id))
+            conn.execute(sql.SQL("""update print_jobs j set retention_at = coalesce(
+                (select timestamp from {} h where h.id = j.history_id),
+                (select timestamp from print_batches b where b.id = j.batch_id), j.created_at)
+                where retention_at is null""").format(sql.Identifier(self.settings.history_table)))
+            conn.execute("""alter table print_jobs alter column retention_at set default now();
+                alter table print_jobs alter column retention_at set not null""")
 
     def enqueue(
         self,
@@ -104,21 +129,30 @@ class PrintQueueService:
         history_id: int | None = None,
         batch_id: int | None = None,
         connection: psycopg.Connection | None = None,
+        target_agent_id: str | None = None,
     ) -> int:
         if not documents:
             raise PrintQueueError("El trabajo no contiene documentos para imprimir.")
         with (nullcontext(connection) if connection is not None else self._connect()) as conn:
             with conn.transaction():
+                queue_transaction(conn)
+                target = self.agents.resolve(conn, target_agent_id)
                 job = conn.execute(
                     """
                     insert into print_jobs
-                        (kind, history_id, batch_id, printer_name, status, requested_labels)
-                    values (%s, %s, %s, %s, 'queued', %s)
+                        (kind, history_id, batch_id, printer_name, status, requested_labels,
+                         target_agent_id, target_name)
+                    values (%s, %s, %s, %s, 'queued', %s, %s, %s)
                     returning id
                     """,
-                    (kind, history_id, batch_id, self.settings.printer_name, requested_labels),
+                    (kind, history_id, batch_id, target["printer_name"], requested_labels,
+                     target["agent_id"], target["display_name"]),
                 ).fetchone()
                 job_id = int(job["id"])
+                conn.execute(sql.SQL("""update print_jobs j set retention_at = coalesce(
+                    (select timestamp from {} h where h.id = j.history_id),
+                    (select timestamp from print_batches b where b.id = j.batch_id), j.created_at)
+                    where j.id = %s""").format(sql.Identifier(self.settings.history_table)), (job_id,))
                 with conn.cursor() as cursor:
                     cursor.executemany(
                         """
@@ -138,65 +172,61 @@ class PrintQueueService:
                     )
         return job_id
 
-    def heartbeat(self, payload: AgentHeartbeatRequest) -> PrinterAgentStatus:
-        self._validate_agent_id(payload.agent_id)
+    def heartbeat(self, payload: AgentHeartbeatRequest, token: str | None = None) -> PrinterAgentStatus:
         with self._connect() as conn:
+            queue_transaction(conn)
+            self.agents.authenticate(conn, payload.agent_id, payload.installation_id, token)
             row = conn.execute(
                 """
-                insert into print_agents
-                    (agent_id, printer_name, printer_ok, message, last_seen_at)
-                values (%s, %s, %s, %s, now())
-                on conflict (agent_id) do update set
-                    printer_name = excluded.printer_name,
-                    printer_ok = excluded.printer_ok,
-                    message = excluded.message,
-                    last_seen_at = excluded.last_seen_at
-                returning agent_id, printer_name, printer_ok, message, last_seen_at
+                update print_agents set printer_ok = %s and printer_name = %s,
+                    message = case when printer_name <> %s then 'La impresora local no coincide con el registro.'
+                                   else %s end,
+                    last_seen_at = now(), version = %s where agent_id = %s returning *
                 """,
-                (payload.agent_id, payload.printer_name, payload.printer_ok, payload.message),
+                (payload.printer_ok, payload.printer_name, payload.printer_name,
+                 payload.message, payload.version, payload.agent_id),
             ).fetchone()
-        return self._agent_status(row)
+            if payload.current_job_id is not None:
+                conn.execute("""update print_jobs set activity_at = now()
+                    where id = %s and agent_id = %s and status = 'processing'
+                    and installation_id is not distinct from %s""",
+                    (payload.current_job_id, payload.agent_id, payload.installation_id))
+        return self.agents.status(row)
 
-    def get_agent_status(self) -> PrinterAgentStatus:
+    def get_agent_status(self, target_agent_id: str | None = None) -> PrinterAgentStatus:
         with self._connect() as conn:
-            row = conn.execute(
-                """
-                select agent_id, printer_name, printer_ok, message, last_seen_at
-                from print_agents where agent_id = %s
-                """,
-                (self.settings.print_agent_id,),
-            ).fetchone()
-        if row is None:
-            return PrinterAgentStatus(
-                agent_id=self.settings.print_agent_id,
-                printer_name=self.settings.printer_name,
-                online=False,
-                printer_ok=False,
-                message="El agente aun no se ha conectado.",
-            )
-        return self._agent_status(row)
+            return self.agents.status(self.agents.resolve(conn, target_agent_id))
 
-    def claim(self, agent_id: str) -> AgentPrintJob | None:
-        self._validate_agent_id(agent_id)
+    def claim(self, agent_id: str, installation_id: str | None = None, token: str | None = None) -> AgentPrintJob | None:
         self.mark_stale_jobs()
         with self._connect() as conn:
             with conn.transaction():
+                queue_transaction(conn)
+                agent = self.agents.authenticate(conn, agent_id, installation_id, token)
+                if not agent["enabled"]:
+                    return None
+                # A station executes only one job at a time, including concurrent polling.
+                if conn.execute("select 1 from print_jobs where agent_id = %s and status = 'processing'",
+                                (agent_id,)).fetchone():
+                    return None
                 job = conn.execute(
                     """
                     with candidate as (
                         select id from print_jobs
                         where status = 'queued'
+                          and target_agent_id = %s and retention_at >= %s
                         order by id
                         for update skip locked
                         limit 1
                     )
                     update print_jobs as job
-                    set status = 'processing', agent_id = %s, claimed_at = now(), message = null
+                    set status = 'processing', agent_id = %s, installation_id = %s,
+                        claimed_at = now(), activity_at = now(), message = null
                     from candidate
                     where job.id = candidate.id
                     returning job.id, job.kind, job.printer_name, job.history_id, job.batch_id
                     """,
-                    (agent_id,),
+                    (agent_id, retention_cutoff(self.settings), agent_id, installation_id),
                 ).fetchone()
                 if job is None:
                     return None
@@ -219,18 +249,20 @@ class PrintQueueService:
             documents=[AgentPrintDocument.model_validate(row) for row in rows],
         )
 
-    def complete(self, job_id: int, payload: AgentJobResultRequest) -> dict[str, object]:
-        self._validate_agent_id(payload.agent_id)
+    def complete(self, job_id: int, payload: AgentJobResultRequest, token: str | None = None) -> dict[str, object]:
         results = {result.document_id: result for result in payload.documents}
         with self._connect() as conn:
             with conn.transaction():
+                queue_transaction(conn)
+                self.agents.authenticate(conn, payload.agent_id, payload.installation_id, token)
                 job = conn.execute(
                     "select * from print_jobs where id = %s for update",
                     (job_id,),
                 ).fetchone()
                 if job is None:
                     raise PrintQueueError("Trabajo de impresion no encontrado.")
-                if job["status"] != "processing" or job["agent_id"] != payload.agent_id:
+                if (job["status"] != "processing" or job["agent_id"] != payload.agent_id
+                        or job["installation_id"] != payload.installation_id):
                     raise PrintQueueError("El trabajo no esta reclamado por este agente.")
                 documents = conn.execute(
                     "select id, item_counts from print_job_documents where job_id = %s order by sequence",
@@ -282,13 +314,14 @@ class PrintQueueService:
     def mark_stale_jobs(self) -> None:
         with self._connect() as conn:
             with conn.transaction():
+                queue_transaction(conn)
                 rows = conn.execute(
                     """
                     update print_jobs
                     set status = 'unknown', completed_at = now(),
                         message = 'El agente no confirmo el resultado; verifique la cola antes de reimprimir.'
                     where status = 'processing'
-                      and claimed_at < now() - (%s * interval '1 second')
+                      and coalesce(activity_at, claimed_at) < now() - (%s * interval '1 second')
                     returning id, history_id, batch_id, message
                     """,
                     (self.settings.print_agent_stale_seconds,),
@@ -303,17 +336,37 @@ class PrintQueueService:
     def retry(self, job_id: int) -> int:
         with self._connect() as conn:
             with conn.transaction():
+                queue_transaction(conn)
                 job = conn.execute(
-                    "select * from print_jobs where id = %s for update",
+                    "select * from print_jobs where id = %s",
                     (job_id,),
                 ).fetchone()
+                if job is None:
+                    raise PrintQueueError("Trabajo de impresión no encontrado.")
+                self.agents.resolve(conn, job["target_agent_id"])
+                job = conn.execute("select * from print_jobs where id = %s for update", (job_id,)).fetchone()
                 if job is None or job["status"] not in {"error", "unknown"}:
                     raise PrintQueueError("Solo se pueden reintentar trabajos con error o resultado incierto.")
+                if job["retention_at"] < retention_cutoff(self.settings):
+                    raise PrintQueueError("El trabajo venció según la política de retención.")
+                # Serializes retries of the same root, including different failed attempts.
+                root_job_id = job["retry_of"] or job_id
+                root_key = f"h{job['history_id']}" if job["history_id"] else f"b{job['batch_id']}" if job["batch_id"] else f"j{root_job_id}"
+                if not conn.execute("select pg_try_advisory_xact_lock(hashtextextended(%s, 1)) as ok",
+                                    (root_key,)).fetchone()["ok"]:
+                    raise PrintQueueError("Ya se está reintentando esta impresión.")
+                if conn.execute("""select 1 from print_jobs where status in ('queued', 'processing') and
+                    ((history_id is not null and history_id = %s) or
+                     (batch_id is not null and batch_id = %s) or
+                     (history_id is null and batch_id is null and (id = %s or retry_of = %s))) limit 1""",
+                    (job["history_id"], job["batch_id"], root_job_id, root_job_id)).fetchone():
+                    raise PrintQueueError("La impresión ya tiene un trabajo pendiente.")
                 new_job = conn.execute(
                     """
                     insert into print_jobs
-                        (kind, history_id, batch_id, printer_name, status, requested_labels)
-                    values (%s, %s, %s, %s, 'queued', %s)
+                        (kind, history_id, batch_id, printer_name, status, requested_labels,
+                         target_agent_id, target_name, retention_at, retry_of)
+                    values (%s, %s, %s, %s, 'queued', %s, %s, %s, %s, %s)
                     returning id
                     """,
                     (
@@ -322,6 +375,8 @@ class PrintQueueService:
                         job["batch_id"],
                         job["printer_name"],
                         job["requested_labels"],
+                        job["target_agent_id"], job["target_name"], job["retention_at"],
+                        root_job_id,
                     ),
                 ).fetchone()
                 new_job_id = int(new_job["id"])
@@ -335,21 +390,6 @@ class PrintQueueService:
                 )
                 self._set_related_status(conn, job, "queued", None, reset=True)
         return new_job_id
-
-    def _validate_agent_id(self, agent_id: str) -> None:
-        if agent_id != self.settings.print_agent_id:
-            raise PrintQueueError("Agente de impresion no autorizado.")
-
-    def _agent_status(self, row: dict) -> PrinterAgentStatus:
-        age = (datetime.now(timezone.utc) - row["last_seen_at"]).total_seconds()
-        return PrinterAgentStatus(
-            agent_id=row["agent_id"],
-            printer_name=row["printer_name"],
-            online=age <= self.settings.print_agent_stale_seconds,
-            printer_ok=row["printer_ok"],
-            last_seen_at=row["last_seen_at"],
-            message=row["message"],
-        )
 
     @staticmethod
     def _set_related_status(conn, job: dict, status: str, message: str | None, reset: bool = False) -> None:

@@ -2,14 +2,16 @@
 set -euo pipefail
 
 usage() {
-    echo "Uso: bash scripts/linux/start.sh [--build] [--logs]"
+    echo "Uso: bash scripts/linux/start.sh [--build] [--logs] [--dev]"
 }
 build=0
 logs=0
+dev=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --build) build=1 ;;
         --logs) logs=1 ;;
+        --dev) dev=1 ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; exit 2 ;;
     esac
@@ -22,10 +24,12 @@ env_file="$repo_root/conn/.env"
 command -v docker >/dev/null || { echo "Instale Docker y el plugin Compose." >&2; exit 1; }
 docker info >/dev/null 2>&1 || { echo "Docker no esta activo o este usuario no tiene acceso al daemon." >&2; exit 1; }
 docker compose version >/dev/null || { echo "Falta el plugin Docker Compose." >&2; exit 1; }
-arguments=(compose --env-file "$env_file" up -d)
+compose=(compose --env-file "$env_file" -f docker-compose.yml)
+if [[ "$dev" == 1 ]]; then compose+=(-f docker-compose.dev.yml); fi
+arguments=("${compose[@]}" up -d)
 if [[ "$build" == 1 ]]; then arguments+=(--build); fi
 docker "${arguments[@]}"
-docker compose --env-file "$env_file" ps
+docker "${compose[@]}" ps
 printf '%s\n' 'Frontend: http://localhost:8083' 'Backend: http://localhost:8080/api' \
     'La impresion requiere el agente en el equipo Windows conectado a la Zebra.'
-if [[ "$logs" == 1 ]]; then docker compose --env-file "$env_file" logs -f; fi
+if [[ "$logs" == 1 ]]; then docker "${compose[@]}" logs -f; fi
